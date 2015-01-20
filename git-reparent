@@ -1,0 +1,65 @@
+#!/usr/bin/env python
+
+"""A friendlier wrapper for git rebase.
+"""
+
+from __future__ import print_function
+import getopt
+import os
+import subprocess
+import sys
+
+def main(argv):
+    globals()["__name__"] = argv[0]
+
+    branch = ""
+    until = ""
+    dest = ""
+    interactive = False
+
+    try:
+        opts, args = getopt.getopt(argv[1:],
+                                   "hi", ["help",
+                                          "branch=",
+                                          "until=",
+                                          "dest=",
+                                          "interactive"])
+    except getopt.GetoptError as e:
+        print(e, file=sys.stderr)
+        return 1
+    for o, a in opts:
+        if o in ("-h", "--help"):
+            print("{name}: {doc}\n"
+                  "Usage: {name} --branch=COMMIT --until=COMMIT --dest=COMMIT"
+                  .format(name=__name__, doc=__doc__.strip()))
+            return 0
+        elif o in ("--branch"):
+            branch = a
+        elif o in ("--until"):
+            until = a
+        elif o in ("--dest"):
+            dest = a
+        elif o in ("-i", "--interactive"):
+            interactive = True
+
+    if not branch:
+        print("--branch not specified.", file=sys.stderr)
+        return 1
+    if not until:
+        print("--until not specified.", file=sys.stderr)
+        return 1
+    if not dest:
+        print("--dest not specified.", file=sys.stderr)
+        return 1
+
+    args = ["git", "rebase"]
+    if interactive:
+        args += ["--interactive"]
+    args += ["--onto", dest, "--", until, branch]
+    p = subprocess.Popen(args, bufsize=1)
+    p.communicate()
+    return p.returncode
+
+if __name__ == "__main__":
+    sys.argv[0] = os.path.basename(sys.argv[0])
+    sys.exit(main(sys.argv))
