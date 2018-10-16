@@ -1,9 +1,4 @@
-#!/bin/sh
+#!/usr/bin/env bash
 
-branch=${1}
-
-if [ -z "${branch}" ]; then
-   branch=HEAD
-fi
-
-git checkout "$(git rev-parse ${branch})"
+branch="${1}"
+git checkout "$(git rev-parse ${branch:-HEAD})"
