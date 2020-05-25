@@ -1,62 +1,60 @@
 #!/usr/bin/env python3
 
-"""Generates a diff for a single git commit.
-"""
+"""Shows a diff for a single git commit."""
 
 import argparse
 import os
 import subprocess
 import sys
 
-class PassThroughOption(argparse.Action):
-    """Handles an option meant to be passed through to another command.  Appends
-    the option and its arguments to a list specified by `dest`.
-    """
-    def __call__(self, parser, namespace, values, option_string=None):
-        # argparse initially adds `self.dest` to `namespace` with its default
-        # value, so we can't use `getattr`'s default argument.
-        old_values = getattr(namespace, self.dest) or []
-        setattr(namespace, self.dest, old_values + [option_string, *values])
+import gitutils
+
 
 def main(argv):
-    globals()["__name__"] = argv[0]
+    try:
+        git_diff_help = "See `git help diff`."
 
-    git_diff_help = "See `git help diff`."
+        ap = argparse.ArgumentParser(description=__doc__.strip(), add_help=False)
+        ap.add_argument("-h", "--help", action="help",
+                        help="Show this help message and exit.")
+        ap.add_argument("--verbose", action="store_true",
+                        help="Print verbose debugging messages.")
+        ap.add_argument("-b", "--ignore-space-change", dest="diff_options", nargs=0,
+                        action=gitutils.PassThroughOption,
+                        help=git_diff_help)
+        ap.add_argument("-w", "--ignore-all-space", dest="diff_options", nargs=0,
+                        action=gitutils.PassThroughOption,
+                        help=git_diff_help)
+        ap.add_argument("--ignore-blank-lines", dest="diff_options", nargs=0,
+                        action=gitutils.PassThroughOption,
+                        help=git_diff_help)
+        ap.add_argument("commitish", metavar="COMMIT", nargs="?",
+                        default="HEAD",
+                        help="The commit-ish to show the diff of.")
 
-    ap = argparse.ArgumentParser(description=__doc__.strip(), add_help=False)
-    ap.add_argument("-h", "--help", action="help",
-                    help="Show this help message and exit.")
-    ap.add_argument("-b", "--ignore-space-change", dest="diff_options", nargs=0,
-                    action=PassThroughOption,
-                    help=git_diff_help)
-    ap.add_argument("-w", "--ignore-all-space", dest="diff_options", nargs=0,
-                    action=PassThroughOption,
-                    help=git_diff_help)
-    ap.add_argument("--ignore-blank-lines", dest="diff_options", nargs=0,
-                    action=PassThroughOption,
-                    help=git_diff_help)
-    ap.add_argument("commit", metavar="COMMIT", nargs="?", default="HEAD",
-                    help="The commit-ish to show the diff of.")
+        args = ap.parse_args(argv[1:])
 
-    args = ap.parse_args(argv[1:])
+        gitutils.verbose = args.verbose
+        commit = gitutils.git_commit_hash(args.commitish)
 
-    # Use `rev-parse` to convert to an actual commit to handle things like
-    # ":/COMMIT_MESSAGE".
-    command = ("git", "rev-parse", "--verify", args.commit)
-    result = subprocess.run(command,
-                            stdout=subprocess.PIPE,
-                            universal_newlines=True)
-    if result.returncode != 0:
-        return result.returncode
+        diff_options = args.diff_options or []
 
-    diff_options = args.diff_options or []
+        # We don't call `git diff` with `--` because `git diff` uses `--` to
+        # separate commits from file paths, not options from positional
+        # arguments.
+        return gitutils.run_command(
+            ("git", "diff", *diff_options, commit + "~", commit),
+            bufsize=1).returncode
 
-    commit = result.stdout.strip()
-    command = ("git", "diff", *diff_options, commit + "~", commit)
-    result = subprocess.run(command, bufsize=1)
-    return result.returncode
+    except gitutils.AbortError as e:
+        print(f"{__name__}: {e}", file=sys.stderr)
+        return e.exit_code
+
 
 if __name__ == "__main__":
-    sys.argv[0] = os.path.basename(sys.argv[0])
-    sys.exit(main(sys.argv))
+    __name__ = os.path.basename(__file__)
 
+    try:
+        sys.exit(main(sys.argv))
+    except KeyboardInterrupt:
+        sys.exit(1)
