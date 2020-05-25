@@ -1,0 +1,5 @@
+#!/bin/sh
+
+# Switches to the parent commit.
+
+git checkout HEAD~
