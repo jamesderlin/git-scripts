@@ -37,7 +37,7 @@ def main(argv):
         gitutils.verbose = args.verbose
         commit = gitutils.git_commit_hash(args.commitish)
 
-        diff_options = args.diff_options or []
+        diff_options = args.diff_options or ()
 
         # We don't call `git diff` with `--` because `git diff` uses `--` to
         # separate commits from file paths, not options from positional

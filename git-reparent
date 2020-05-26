@@ -1,65 +1,78 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
-"""A friendlier wrapper for git rebase.
+"""A friendlier wrapper for `git rebase`.
 """
 
-from __future__ import print_function
-import getopt
+import argparse
+import functools
 import os
-import subprocess
 import sys
 
+import gitutils
+
+
+@functools.lru_cache(1)
+def memoized_current_branch():
+    return gitutils.git_current_branch()
+
+
 def main(argv):
-    globals()["__name__"] = argv[0]
-
-    branch = ""
-    until = ""
-    dest = ""
-    interactive = False
-
     try:
-        opts, args = getopt.getopt(argv[1:],
-                                   "hi", ["help",
-                                          "branch=",
-                                          "until=",
-                                          "dest=",
-                                          "interactive"])
-    except getopt.GetoptError as e:
-        print(e, file=sys.stderr)
-        return 1
-    for o, a in opts:
-        if o in ("-h", "--help"):
-            print("{name}: {doc}\n"
-                  "Usage: {name} --branch=COMMIT --until=COMMIT --dest=COMMIT"
-                  .format(name=__name__, doc=__doc__.strip()))
-            return 0
-        elif o in ("--branch"):
-            branch = a
-        elif o in ("--until"):
-            until = a
-        elif o in ("--dest"):
-            dest = a
-        elif o in ("-i", "--interactive"):
-            interactive = True
+        git_rebase_help = "See `git help rebase`."
 
-    if not branch:
-        print("--branch not specified.", file=sys.stderr)
-        return 1
-    if not until:
-        print("--until not specified.", file=sys.stderr)
-        return 1
-    if not dest:
-        print("--dest not specified.", file=sys.stderr)
-        return 1
+        ap = argparse.ArgumentParser(description=__doc__.strip(), add_help=False)
+        ap.add_argument("-h", "--help", action="help",
+                        help="Show this help message and exit.")
+        ap.add_argument("--verbose", action="store_true",
+                        help="Print verbose debugging messages.")
+        ap.add_argument("--dest",
+                        help="The destination commit.  This will become the "
+                             "new parent commit of the reparented range.")
+        ap.add_argument("-i", "--interactive", dest="rebase_options", nargs=0,
+                        action=gitutils.PassThroughOption,
+                        help=git_rebase_help)
+        ap.add_argument("range", metavar="COMMIT..COMMIT",
+                        help="The inclusive range of commits to reparent.  "
+                             "All commits between and including the specified "
+                             "commits will be reparented.  Endpoints may be "
+                             "specified in either order.  If either endpoint "
+                             "is unspecified, the current branch will be used.")
 
-    args = ["git", "rebase"]
-    if interactive:
-        args += ["--interactive"]
-    args += ["--onto", dest, "--", until, branch]
-    p = subprocess.Popen(args, bufsize=1)
-    p.communicate()
-    return p.returncode
+        args = ap.parse_args(argv[1:])
+
+        gitutils.verbose = args.verbose
+        rebase_range = args.range.split("..")
+        if len(rebase_range) != 2:
+            raise gitutils.AbortError(f"Invalid commit range: {args.range}")
+
+        # Don't use `gitutils.git_commit_hash` since the commits might specify
+        # branch names that we'll want to pass directly to `git rebase`.
+        rebase_range = [(i or memoized_current_branch()) for i in rebase_range]
+
+        if not gitutils.git_is_ancestor(rebase_range[0], rebase_range[1]):
+            # Swap and try again.
+            (rebase_range[0], rebase_range[1]) \
+                = (rebase_range[1], rebase_range[0])
+
+            if not gitutils.git_is_ancestor(rebase_range[0], rebase_range[1]):
+                raise gitutils.AbortError(
+                    "Commit range does not specify an ancestor and descendant: "
+                    f"{args.range}")
+
+        rebase_options = args.rebase_options or ()
+        command = ("git", "rebase", *rebase_options, "--onto", args.dest, "--",
+                   *rebase_range)
+        return gitutils.run_command(command, bufsize=1).returncode
+
+    except gitutils.AbortError as e:
+        print(f"{__name__}: {e}", file=sys.stderr)
+        return e.exit_code
+
 
 if __name__ == "__main__":
-    sys.argv[0] = os.path.basename(sys.argv[0])
-    sys.exit(main(sys.argv))
+    __name__ = os.path.basename(__file__)
+
+    try:
+        sys.exit(main(sys.argv))
+    except KeyboardInterrupt:
+        sys.exit(1)

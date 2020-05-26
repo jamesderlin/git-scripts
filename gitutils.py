@@ -73,3 +73,17 @@ def git_is_ancestor(parent_commitish, child_commitish):
     result = run_command(("git", "merge-base", "--is-ancestor",
                           parent_commitish, child_commitish))
     return result.returncode == 0
+
+
+def git_current_branch():
+    """Returns the name of the currently checked out git branch, if any.
+    Returns `"HEAD"` otherwise.
+    """
+    # Reference: <https://stackoverflow.com/questions/6245570/>
+    result = run_command(("git", "rev-parse", "--abbrev-ref", "HEAD"),
+                         stdout=subprocess.PIPE,
+                         universal_newlines=True)
+    if result.returncode != 0:
+        raise AbortError("Failed to determine the current git branch.")
+
+    return result.stdout.strip()
