@@ -9,6 +9,7 @@ class AbortError(Exception):
     """A simple exception class to abort program execution."""
     def __init__(self, message, exit_code=1):
         super().__init__(message)
+        assert(exit_code != 0)
         self.exit_code = exit_code
 
 
@@ -49,14 +50,19 @@ def run_command(args, **kwargs):
     return subprocess.run(args, **kwargs)
 
 
-def git_commit_hash(commitish):
+def git_commit_hash(commitish, short=False):
     """Normalizes a commit-ish to an actual commit hash to handle things such
     as `:/COMMIT_MESSAGE`.
 
     Raises an `AbortError` if no commit hash was found.
     """
-    command = ("git", "rev-parse", "--verify", commitish)
-    result = run_command(command,
+    extra_options = []
+    if short:
+        extra_options.append("--short")
+    if not verbose:
+        extra_options.append("--quiet")
+    result = run_command(("git", "rev-parse", "--verify", *extra_options,
+                          commitish),
                          stdout=subprocess.PIPE,
                          stderr=subprocess.DEVNULL,
                          universal_newlines=True)
@@ -72,7 +78,14 @@ def git_is_ancestor(parent_commitish, child_commitish):
     """
     result = run_command(("git", "merge-base", "--is-ancestor",
                           parent_commitish, child_commitish))
-    return result.returncode == 0
+    if result.returncode == 0:
+        return True
+    elif result.returncode == 1:
+        return False
+    else:
+        raise AbortError(f"Command failed: {result.args} "
+                         f"(error: {result.returncode})",
+                         exit_code=result.returncode)
 
 
 def git_current_branch():
