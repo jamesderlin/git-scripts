@@ -44,8 +44,9 @@ def main(argv):
         return 0
 
     except gitutils.AbortError as e:
-        print(f"{__name__}: {e}", file=sys.stderr)
-        return e.exit_code if e.exit_code != 1 else -1
+        if not e.cancelled:
+            print(f"{__name__}: {e}", file=sys.stderr)
+        return e.exit_code
 
 
 if __name__ == "__main__":

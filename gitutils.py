@@ -6,10 +6,16 @@ verbose = False
 
 
 class AbortError(Exception):
-    """A simple exception class to abort program execution."""
-    def __init__(self, message, exit_code=1):
-        super().__init__(message)
+    """A simple exception class to abort program execution.
+
+    If `cancelled` is True, no error message should be printed.
+    """
+    def __init__(self, message=None, cancelled=False, exit_code=1):
+        super().__init__(message or ("Cancelled."
+                                     if cancelled
+                                     else "Unknown error"))
         assert(exit_code != 0)
+        self.cancelled = cancelled
         self.exit_code = exit_code
 
 

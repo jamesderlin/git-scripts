@@ -47,7 +47,8 @@ def main(argv):
             bufsize=1).returncode
 
     except gitutils.AbortError as e:
-        print(f"{__name__}: {e}", file=sys.stderr)
+        if not e.cancelled:
+            print(f"{__name__}: {e}", file=sys.stderr)
         return e.exit_code
 
 
