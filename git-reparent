@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
-"""A friendlier wrapper for `git rebase`.
+"""
+A friendlier wrapper for `git rebase`.
 """
 
 import argparse
@@ -66,7 +67,7 @@ def main(argv):
 
 
 if __name__ == "__main__":
-    __name__ = os.path.basename(__file__)
+    __name__ = os.path.basename(__file__)  # pylint: disable=redefined-builtin
 
     try:
         sys.exit(main(sys.argv))

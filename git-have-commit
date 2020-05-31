@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
-"""Prints whether one Git commit included by (is an ancestor of) another.
+"""
+Prints whether one Git commit is included by (is an ancestor of) another.
 
 If the specified commit is not an ancestor, nothing is printed, and the command
 exits with a status of 1.
@@ -45,7 +46,7 @@ def main(argv):
 
 
 if __name__ == "__main__":
-    __name__ = os.path.basename(__file__)
+    __name__ = os.path.basename(__file__)  # pylint: disable=redefined-builtin
 
     try:
         sys.exit(main(sys.argv))

@@ -12,7 +12,8 @@ import gitutils
 
 
 def terminal_size():
-    """Returns the terminal size.
+    """
+    Returns the terminal size.
 
     Returns (inf, inf) if stdout is not a TTY.
     """
@@ -22,7 +23,8 @@ def terminal_size():
 
 
 def ellipsize(s, width):
-    """Truncates a string to the specified maximum width.
+    """
+    Truncates a string to the specified maximum width.
 
     The maximum width includes the ellipsis added if the string is truncated.
 
@@ -33,19 +35,20 @@ def ellipsize(s, width):
 
     ellipsis = "..."
     s = s[: (width - len(ellipsis))] + ellipsis
-    assert(len(s) == width)
+    assert len(s) == width
     return s
 
 
 def prompt_for_child(children_hashes):
     """Prompts the user to choose a child commit."""
     instructions = ["There are multiple children:"]
-    for i in range(len(children_hashes)):
-        commit_summary \
-            = gitutils.summarize_git_commit(children_hashes[i],
-                                            f"    {i}: %h %s")
-        instructions.append(ellipsize(commit_summary,
-                                      width=terminal_size().columns - 1))
+
+    max_length = terminal_size().columns - 1
+    for (i, child_hash) in enumerate(children_hashes):
+        commit_summary = gitutils.summarize_git_commit(child_hash,
+                                                       f"    {i}: %h %s")
+        instructions.append(ellipsize(commit_summary, width=max_length))
+    # Dummy element to get a final newline.
     instructions.append("")
     instructions = "\n".join(instructions)
     print(instructions)
@@ -62,12 +65,15 @@ def prompt_for_child(children_hashes):
 
         if not choice:
             continue
-        elif choice.lower() in ("?", "help"):
+
+        if choice.lower() in ("?", "help"):
             print()
             print(instructions)
             continue
-        elif choice.lower() in ("q", "quit"):
+
+        if choice.lower() in ("q", "quit"):
             raise gitutils.AbortError(cancelled=True)
+
         try:
             index = int(choice)
             if 0 <= index <= max_index:
@@ -111,7 +117,7 @@ def main(argv):
 
 
 if __name__ == "__main__":
-    __name__ = os.path.basename(__file__)
+    __name__ = os.path.basename(__file__)  # pylint: disable=redefined-builtin
 
     try:
         sys.exit(main(sys.argv))
