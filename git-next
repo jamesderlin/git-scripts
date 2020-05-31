@@ -67,42 +67,37 @@ def prompt_for_child(children_hashes):
         print()
 
 
+@gitutils.entrypoint(globals())
 def main(argv):
-    try:
-        ap = argparse.ArgumentParser(description=__doc__.strip(), add_help=False)
-        ap.add_argument("-h", "--help", action="help",
-                        help="Show this help message and exit.")
-        ap.add_argument("--verbose", action="store_true",
-                        help="Print verbose debugging messages.")
+    ap = argparse.ArgumentParser(description=__doc__.strip(), add_help=False)
+    ap.add_argument("-h", "--help", action="help",
+                    help="Show this help message and exit.")
+    ap.add_argument("--verbose", action="store_true",
+                    help="Print verbose debugging messages.")
 
-        args = ap.parse_args(argv[1:])
+    args = ap.parse_args(argv[1:])
 
-        gitutils.verbose = args.verbose
+    gitutils.verbose = args.verbose
 
-        commit_graph = gitutils.git_commit_graph()
-        head_hash = gitutils.git_commit_hash("HEAD")
+    commit_graph = gitutils.git_commit_graph()
+    head_hash = gitutils.git_commit_hash("HEAD")
 
-        def head_hash_short():
-            return gitutils.git_commit_hash(head_hash, short=True)
+    def head_hash_short():
+        return gitutils.git_commit_hash(head_hash, short=True)
 
-        children_hashes = commit_graph.get(head_hash)
-        if not children_hashes:
-            raise gitutils.AbortError(f"Could not find a child commit for "
-                                      f"{head_hash_short()}")
+    children_hashes = commit_graph.get(head_hash)
+    if not children_hashes:
+        raise gitutils.AbortError(f"Could not find a child commit for "
+                                  f"{head_hash_short()}")
 
-        if len(children_hashes) == 1:
-            selected_child_hash = children_hashes[0]
-        else:
-            selected_child_hash = prompt_for_child(children_hashes)
+    if len(children_hashes) == 1:
+        selected_child_hash = children_hashes[0]
+    else:
+        selected_child_hash = prompt_for_child(children_hashes)
 
-        return gitutils.run_command(
-            ("git", "checkout", "--detach", selected_child_hash),
-            bufsize=1).returncode
-
-    except gitutils.AbortError as e:
-        if not e.cancelled:
-            print(f"{__name__}: {e}", file=sys.stderr)
-        return e.exit_code
+    return gitutils.run_command(
+        ("git", "checkout", "--detach", selected_child_hash),
+        bufsize=1).returncode
 
 
 if __name__ == "__main__":

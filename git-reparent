@@ -16,58 +16,53 @@ def memoized_current_branch():
     return gitutils.git_current_branch()
 
 
+@gitutils.entrypoint(globals())
 def main(argv):
-    try:
-        git_rebase_help = "See `git help rebase`."
+    git_rebase_help = "See `git help rebase`."
 
-        ap = argparse.ArgumentParser(description=__doc__.strip(), add_help=False)
-        ap.add_argument("-h", "--help", action="help",
-                        help="Show this help message and exit.")
-        ap.add_argument("--verbose", action="store_true",
-                        help="Print verbose debugging messages.")
-        ap.add_argument("--dest",
-                        help="The destination commit.  This will become the "
-                             "new parent commit of the reparented range.")
-        ap.add_argument("-i", "--interactive", dest="rebase_options", nargs=0,
-                        action=gitutils.PassThroughOption,
-                        help=git_rebase_help)
-        ap.add_argument("range", metavar="COMMIT..COMMIT",
-                        help="The inclusive range of commits to reparent.  "
-                             "All commits between and including the specified "
-                             "commits will be reparented.  Endpoints may be "
-                             "specified in either order.  If either endpoint "
-                             "is unspecified, the current branch will be used.")
+    ap = argparse.ArgumentParser(description=__doc__.strip(), add_help=False)
+    ap.add_argument("-h", "--help", action="help",
+                    help="Show this help message and exit.")
+    ap.add_argument("--verbose", action="store_true",
+                    help="Print verbose debugging messages.")
+    ap.add_argument("--dest",
+                    help="The destination commit.  This will become the "
+                         "new parent commit of the reparented range.")
+    ap.add_argument("-i", "--interactive", dest="rebase_options", nargs=0,
+                    action=gitutils.PassThroughOption,
+                    help=git_rebase_help)
+    ap.add_argument("range", metavar="COMMIT..COMMIT",
+                    help="The inclusive range of commits to reparent.  "
+                         "All commits between and including the specified "
+                         "commits will be reparented.  Endpoints may be "
+                         "specified in either order.  If either endpoint "
+                         "is unspecified, the current branch will be used.")
 
-        args = ap.parse_args(argv[1:])
+    args = ap.parse_args(argv[1:])
 
-        gitutils.verbose = args.verbose
-        rebase_range = args.range.split("..")
-        if len(rebase_range) != 2:
-            raise gitutils.AbortError(f"Invalid commit range: {args.range}")
+    gitutils.verbose = args.verbose
+    rebase_range = args.range.split("..")
+    if len(rebase_range) != 2:
+        raise gitutils.AbortError(f"Invalid commit range: {args.range}")
 
-        # Don't use `gitutils.git_commit_hash` since the commits might specify
-        # branch names that we'll want to pass directly to `git rebase`.
-        rebase_range = [(i or memoized_current_branch()) for i in rebase_range]
+    # Don't use `gitutils.git_commit_hash` since the commits might specify
+    # branch names that we'll want to pass directly to `git rebase`.
+    rebase_range = [(i or memoized_current_branch()) for i in rebase_range]
+
+    if not gitutils.git_is_ancestor(rebase_range[0], rebase_range[1]):
+        # Swap and try again.
+        (rebase_range[0], rebase_range[1]) \
+            = (rebase_range[1], rebase_range[0])
 
         if not gitutils.git_is_ancestor(rebase_range[0], rebase_range[1]):
-            # Swap and try again.
-            (rebase_range[0], rebase_range[1]) \
-                = (rebase_range[1], rebase_range[0])
+            raise gitutils.AbortError(
+                "Commit range does not specify an ancestor and descendant: "
+                f"{args.range}")
 
-            if not gitutils.git_is_ancestor(rebase_range[0], rebase_range[1]):
-                raise gitutils.AbortError(
-                    "Commit range does not specify an ancestor and descendant: "
-                    f"{args.range}")
-
-        rebase_options = args.rebase_options or ()
-        command = ("git", "rebase", *rebase_options, "--onto", args.dest, "--",
-                   *rebase_range)
-        return gitutils.run_command(command, bufsize=1).returncode
-
-    except gitutils.AbortError as e:
-        if not e.cancelled:
-            print(f"{__name__}: {e}", file=sys.stderr)
-        return e.exit_code
+    rebase_options = args.rebase_options or ()
+    command = ("git", "rebase", *rebase_options, "--onto", args.dest, "--",
+               *rebase_range)
+    return gitutils.run_command(command, bufsize=1).returncode
 
 
 if __name__ == "__main__":

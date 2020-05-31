@@ -10,46 +10,41 @@ import sys
 import gitutils
 
 
+@gitutils.entrypoint(globals())
 def main(argv):
-    try:
-        git_diff_help = "See `git help diff`."
+    git_diff_help = "See `git help diff`."
 
-        ap = argparse.ArgumentParser(description=__doc__.strip(), add_help=False)
-        ap.add_argument("-h", "--help", action="help",
-                        help="Show this help message and exit.")
-        ap.add_argument("--verbose", action="store_true",
-                        help="Print verbose debugging messages.")
-        ap.add_argument("-b", "--ignore-space-change", dest="diff_options", nargs=0,
-                        action=gitutils.PassThroughOption,
-                        help=git_diff_help)
-        ap.add_argument("-w", "--ignore-all-space", dest="diff_options", nargs=0,
-                        action=gitutils.PassThroughOption,
-                        help=git_diff_help)
-        ap.add_argument("--ignore-blank-lines", dest="diff_options", nargs=0,
-                        action=gitutils.PassThroughOption,
-                        help=git_diff_help)
-        ap.add_argument("commitish", metavar="COMMIT", nargs="?",
-                        default="HEAD",
-                        help="The commit-ish to show the diff of.")
+    ap = argparse.ArgumentParser(description=__doc__.strip(), add_help=False)
+    ap.add_argument("-h", "--help", action="help",
+                    help="Show this help message and exit.")
+    ap.add_argument("--verbose", action="store_true",
+                    help="Print verbose debugging messages.")
+    ap.add_argument("-b", "--ignore-space-change", dest="diff_options", nargs=0,
+                    action=gitutils.PassThroughOption,
+                    help=git_diff_help)
+    ap.add_argument("-w", "--ignore-all-space", dest="diff_options", nargs=0,
+                    action=gitutils.PassThroughOption,
+                    help=git_diff_help)
+    ap.add_argument("--ignore-blank-lines", dest="diff_options", nargs=0,
+                    action=gitutils.PassThroughOption,
+                    help=git_diff_help)
+    ap.add_argument("commitish", metavar="COMMIT", nargs="?",
+                    default="HEAD",
+                    help="The commit-ish to show the diff of.")
 
-        args = ap.parse_args(argv[1:])
+    args = ap.parse_args(argv[1:])
 
-        gitutils.verbose = args.verbose
-        commit = gitutils.git_commit_hash(args.commitish)
+    gitutils.verbose = args.verbose
+    commit = gitutils.git_commit_hash(args.commitish)
 
-        diff_options = args.diff_options or ()
+    diff_options = args.diff_options or ()
 
-        # We don't call `git diff` with `--` because `git diff` uses `--` to
-        # separate commits from file paths, not options from positional
-        # arguments.
-        return gitutils.run_command(
-            ("git", "diff", *diff_options, commit + "~", commit),
-            bufsize=1).returncode
-
-    except gitutils.AbortError as e:
-        if not e.cancelled:
-            print(f"{__name__}: {e}", file=sys.stderr)
-        return e.exit_code
+    # We don't call `git diff` with `--` because `git diff` uses `--` to
+    # separate commits from file paths, not options from positional
+    # arguments.
+    return gitutils.run_command(
+        ("git", "diff", *diff_options, commit + "~", commit),
+        bufsize=1).returncode
 
 
 if __name__ == "__main__":

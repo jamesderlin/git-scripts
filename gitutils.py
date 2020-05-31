@@ -1,4 +1,5 @@
 import argparse
+import functools
 import subprocess
 import sys
 
@@ -18,6 +19,21 @@ class AbortError(Exception):
         self.cancelled = cancelled
         self.exit_code = exit_code
 
+
+def entrypoint(caller_globals):
+    """Returns a decorator for top-level `main` (or equivalent) functions."""
+    def decorator(f):
+        @functools.wraps(f)
+        def wrapper(*args, **kwargs):
+            try:
+                return f(*args, **kwargs)
+            except AbortError as e:
+                if not e.cancelled:
+                    script_name = caller_globals["__name__"]
+                    print(f"{script_name}: {e}", file=sys.stderr)
+                return e.exit_code
+        return wrapper
+    return decorator
 
 class PassThroughOption(argparse.Action):
     """Handles an option meant to be passed through to another command.  Appends
