@@ -3,11 +3,22 @@
 """Navigates to a child commit."""
 
 import argparse
+import math
 import os
-import subprocess
+import shutil
 import sys
 
 import gitutils
+
+
+def terminal_size():
+    """Returns the terminal size.
+
+    Returns (inf, inf) if stdout is not a TTY.
+    """
+    if not sys.stdout.isatty():
+        return os.terminal_size((math.inf, math.inf))
+    return shutil.get_terminal_size()
 
 
 def ellipsize(s, width):
@@ -33,7 +44,8 @@ def prompt_for_child(children_hashes):
         commit_summary \
             = gitutils.summarize_git_commit(children_hashes[i],
                                             f"    {i}: %h %s")
-        instructions.append(ellipsize(commit_summary, width=79))
+        instructions.append(ellipsize(commit_summary,
+                                      width=terminal_size().columns - 1))
     instructions.append("")
     instructions = "\n".join(instructions)
     print(instructions)
@@ -62,7 +74,7 @@ def prompt_for_child(children_hashes):
                 return children_hashes[index]
 
             print(f"{choice} is not in the range [0..{max_index}].")
-        except ValueError as e:
+        except ValueError:
             print(f"\"{choice}\" is not a valid index.")
         print()
 
@@ -82,13 +94,11 @@ def main(argv):
     commit_graph = gitutils.git_commit_graph()
     head_hash = gitutils.git_commit_hash("HEAD")
 
-    def head_hash_short():
-        return gitutils.git_commit_hash(head_hash, short=True)
-
     children_hashes = commit_graph.get(head_hash)
     if not children_hashes:
+        head_hash_short = gitutils.git_commit_hash(head_hash, short=True)
         raise gitutils.AbortError(f"Could not find a child commit for "
-                                  f"{head_hash_short()}")
+                                  f"{head_hash_short}")
 
     if len(children_hashes) == 1:
         selected_child_hash = children_hashes[0]
