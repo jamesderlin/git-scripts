@@ -121,6 +121,26 @@ def git_is_ancestor(parent_commitish, child_commitish):
                          exit_code=result.returncode)
 
 
+def git_commit_graph():
+    """Returns a dictionary mapping each Git commit hash to a list of commit
+    hashes for its immediate children.
+    """
+    result = run_command(("git", "rev-list", "--children", "--all"),
+                         stdout=subprocess.PIPE,
+                         universal_newlines=True)
+    if result.returncode != 0:
+        raise AbortError(f"Command failed: {result.args} "
+                         f"(error: {result.returncode})",
+                         exit_code=result.returncode)
+
+    commit_graph = {}
+    lines = result.stdout.splitlines()
+    for line in lines:
+        (parent_hash, *children_hashes) = line.split()
+        commit_graph.setdefault(parent_hash, []).extend(children_hashes)
+    return commit_graph
+
+
 def git_current_branch():
     """Returns the name of the currently checked out git branch, if any.
     Returns `"HEAD"` otherwise.
