@@ -1,4 +1,4 @@
 #!/usr/bin/env bash
 
-branch="${1}"
-git checkout "$(git rev-parse ${branch:-HEAD})"
+branch="${1:-HEAD}"
+git checkout --detach "${branch}"

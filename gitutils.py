@@ -33,6 +33,8 @@ def run_command(args, **kwargs):
     the command-line first can help debug issues where the executed process
     never completes.
     """
+    assert(args)
+
     if verbose:
         # We must flush to ensure that we print before the executed command
         # prints.
@@ -56,6 +58,8 @@ def git_commit_hash(commitish, short=False):
 
     Raises an `AbortError` if no commit hash was found.
     """
+    assert(commitish)
+
     extra_options = []
     if short:
         extra_options.append("--short")
@@ -72,10 +76,33 @@ def git_commit_hash(commitish, short=False):
     return result.stdout.strip()
 
 
+def summarize_git_commit(commitish, format=None):
+    """Returns a string summarizing the specified commit-ish.
+
+    By default, the returned summary will include the commit's short hash and
+    the first line of its commit message.
+
+    An optional format string may be specified to control the returned string.
+    Format specifiers are the same as those used by `git log`.  If no format
+    string is specified, uses `"%h %s"`.
+    """
+    assert(commitish)
+
+    format = format or "%h %s"
+    result = run_command(("git", "log", "-1", f"--format={format}", commitish),
+                         stdout=subprocess.PIPE,
+                         stderr=subprocess.DEVNULL,
+                         universal_newlines=True)
+    return result.stdout.rstrip()
+
+
 def git_is_ancestor(parent_commitish, child_commitish):
     """Returns whether `parent_commitish` is a parent commit of (or is the same
     as) `child_commitish`.
     """
+    assert(parent_commitish)
+    assert(child_commitish)
+
     result = run_command(("git", "merge-base", "--is-ancestor",
                           parent_commitish, child_commitish))
     if result.returncode == 0:

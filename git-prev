@@ -2,4 +2,4 @@
 
 # Switches to the parent commit.
 
-git checkout HEAD~
+git checkout --detach HEAD~
