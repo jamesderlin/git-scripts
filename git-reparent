@@ -14,7 +14,8 @@ import gitutils
 
 @functools.lru_cache(1)
 def memoized_current_branch():
-    return gitutils.git_current_branch()
+    """A memoized wrapper around `gitutils.current_git_branch`."""
+    return gitutils.current_git_branch()
 
 
 @gitutils.entrypoint(globals())
@@ -50,12 +51,12 @@ def main(argv):
     # branch names that we'll want to pass directly to `git rebase`.
     rebase_range = [(i or memoized_current_branch()) for i in rebase_range]
 
-    if not gitutils.git_is_ancestor(rebase_range[0], rebase_range[1]):
+    if not gitutils.is_git_ancestor(rebase_range[0], rebase_range[1]):
         # Swap and try again.
         (rebase_range[0], rebase_range[1]) \
             = (rebase_range[1], rebase_range[0])
 
-        if not gitutils.git_is_ancestor(rebase_range[0], rebase_range[1]):
+        if not gitutils.is_git_ancestor(rebase_range[0], rebase_range[1]):
             raise gitutils.AbortError(
                 "Commit range does not specify an ancestor and descendant: "
                 f"{args.range}")

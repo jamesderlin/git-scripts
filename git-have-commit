@@ -28,7 +28,7 @@ def main(argv):
 
     args = ap.parse_args(argv[1:])
 
-    if not gitutils.git_is_ancestor(args.commit, args.leaf):
+    if not gitutils.is_git_ancestor(args.commit, args.leaf):
         return 1
 
     commit = gitutils.git_commit_hash(args.commit, short=True)

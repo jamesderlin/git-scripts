@@ -121,7 +121,8 @@ def summarize_git_commit(commitish, format=None):  # pylint: disable=redefined-b
     assert commitish
 
     format = format or "%h %s"
-    result = run_command(("git", "log", "-1", f"--format={format}", commitish),
+    result = run_command(("git", "log", "--max-count=1", f"--format={format}",
+                          commitish),
                          stdout=subprocess.PIPE,
                          stderr=subprocess.DEVNULL,
                          universal_newlines=True)
@@ -132,7 +133,7 @@ def summarize_git_commit(commitish, format=None):  # pylint: disable=redefined-b
     return result.stdout.rstrip()
 
 
-def git_is_ancestor(parent_commitish, child_commitish):
+def is_git_ancestor(parent_commitish, child_commitish):
     """
     Returns whether `parent_commitish` is a parent commit of (or is the same
     as) `child_commitish`.
@@ -170,7 +171,7 @@ def git_commit_graph():
     return commit_graph
 
 
-def git_current_branch():
+def current_git_branch():
     """
     Returns the name of the currently checked out git branch, if any.  Returns
     `"HEAD"` otherwise.
