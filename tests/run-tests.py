@@ -7,7 +7,8 @@ import argparse
 import code
 from collections import namedtuple
 import importlib
-from io import StringIO
+import inspect
+import io
 import os
 import re
 import shlex
@@ -101,10 +102,11 @@ def set_fake_git_head(fake_run_command, commitish):
         "git rev-parse --verify --quiet HEAD",
         0, stdout=commitish),
 
+
 IOResults = namedtuple("IOResults", ["stdout", "stderr"])
 
-@unittest.mock.patch("sys.stderr", new_callable=StringIO)
-@unittest.mock.patch("sys.stdout", new_callable=StringIO)
+@unittest.mock.patch("sys.stderr", new_callable=io.StringIO)
+@unittest.mock.patch("sys.stdout", new_callable=io.StringIO)
 def call_with_io(callable, mock_stdout, mock_stderr, *, input=None):
     """
     Invokes the specified callable, capturing and returning stdout and stderr
@@ -120,6 +122,30 @@ def call_with_io(callable, mock_stdout, mock_stderr, *, input=None):
             callable()
     return IOResults(stdout=mock_stdout.getvalue(),
                      stderr=mock_stderr.getvalue())
+
+
+def expect(actual, expected=True):
+    """Verifies that an actual value matches an expected value."""
+    if actual != expected:
+        previous_frame = inspect.currentframe().f_back
+        info = inspect.getframeinfo(previous_frame)
+        raise gitutils.AbortError(f"Test failed ({info.filename}:{info.lineno}):\n"
+                                  f"  Expected: {repr(expected)}\n"
+                                  f"    Actual: {repr(actual)}\n")
+
+
+def expect_eval(expression_string):
+    previous_frame = inspect.currentframe().f_back
+    if not eval(expression_string, globals(), previous_frame.f_locals):
+        info = inspect.getframeinfo(previous_frame)
+        raise gitutils.AbortError(f"Test failed ({info.filename}:{info.lineno}):\n"
+                                  f"  Expected: {expression_string}\n")
+
+
+def debug_prompt():
+    """Starts an interactive Python prompt."""
+    previous_frame = inspect.currentframe().f_back
+    code.interact(local=dict(globals(), **previous_frame.f_locals))
 
 
 @gitutils.entrypoint(globals())
@@ -198,21 +224,21 @@ def main(argv):
     gitutils.run_command = fake_run_command
 
     set_fake_git_head(fake_run_command, "initial")
+    expect(gitutils.git_commit_hash("HEAD"), "initial")
 
     def run_git_next():
         return run_script(git_next)
 
-    assert call_with_io(run_git_next).stdout == "HEAD is now at child1\n"
-    assert call_with_io(run_git_next).stdout == "HEAD is now at child2\n"
-    assert call_with_io(run_git_next, input="1").stdout.endswith("HEAD is now at child3b\n")
-    assert call_with_io(run_git_next).stdout == "HEAD is now at child3b1\n"
-    assert call_with_io(run_git_next).stdout == "HEAD is now at merge\n"
-    assert call_with_io(run_git_next, input="0").stdout.endswith("HEAD is now at child4\n")
-    assert call_with_io(run_git_next).stdout == "HEAD is now at leaf3\n"
+    expect(call_with_io(run_git_next).stdout, "HEAD is now at child1\n")
+    expect(call_with_io(run_git_next).stdout, "HEAD is now at child2\n")
+    expect(call_with_io(run_git_next, input="1").stdout.endswith("HEAD is now at child3b\n"))
+    expect(call_with_io(run_git_next).stdout, "HEAD is now at child3b1\n")
+    expect(call_with_io(run_git_next).stdout, "HEAD is now at merge\n")
+    expect(call_with_io(run_git_next, input="0").stdout.endswith("HEAD is now at child4\n"))
+    expect(call_with_io(run_git_next).stdout, "HEAD is now at leaf3\n")
     result = call_with_io(run_git_next)
-    assert not result.stdout and result.stderr == "git-next: Could not find a child commit for leaf3\n"
-
-    code.interact(local=dict(globals(), **locals()))
+    expect(not result.stdout)
+    expect(result.stderr, "git-next: Could not find a child commit for leaf3\n")
 
 
 if __name__ == "__main__":
