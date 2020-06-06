@@ -105,21 +105,22 @@ def set_fake_git_head(fake_run_command, commitish):
 
 IOResults = namedtuple("IOResults", ["stdout", "stderr"])
 
+
+@unittest.mock.patch("sys.stdin", new_callable=io.StringIO)
 @unittest.mock.patch("sys.stderr", new_callable=io.StringIO)
 @unittest.mock.patch("sys.stdout", new_callable=io.StringIO)
-def call_with_io(callable, mock_stdout, mock_stderr, *, input=None):
+def call_with_io(callable, mock_stdout, mock_stderr, mock_stdin, *, input=None):
     """
     Invokes the specified callable, capturing and returning stdout and stderr
     output.
 
-    `input`, if specified, will be used as the fake result from any calls to
-    `input()`.
+    `input`, if specified, will be used as fake input to stdin.
     """
-    if input is None:
-        callable()
-    else:
-        with unittest.mock.patch("builtins.input", return_value=input):
-            callable()
+    if input is not None:
+        mock_stdin.write(input)
+        mock_stdin.seek(0)
+
+    callable()
     return IOResults(stdout=mock_stdout.getvalue(),
                      stderr=mock_stderr.getvalue())
 
