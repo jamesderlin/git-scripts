@@ -27,7 +27,7 @@ def import_file(file_path, module_name=None):
     """
     # Derived from: <https://stackoverflow.com/a/56090741/>.
     if not module_name:
-        (stem, extension) = os.path.splitext(os.path.basename(file_path))
+        (stem, _extension) = os.path.splitext(os.path.basename(file_path))
         module_name = stem.replace("-", "_")
 
     loader = importlib.machinery.SourceFileLoader(module_name, file_path)
@@ -67,7 +67,7 @@ class FakeRunCommand:
 
     def set_fake_result_re(self, command_pattern, **kwargs):
         self.fake_results_re.append((re.compile(command_pattern),
-                                    _FakeRunResult(**kwargs)))
+                                     _FakeRunResult(**kwargs)))
 
     def __call__(self, *args, **kwargs):
         command_line = args_to_command_line((*args[0],))
@@ -80,6 +80,7 @@ class FakeRunCommand:
                     result = r
                     break
         if result is None:
+            print(self.fake_results)
             raise NotImplementedError(f"No results faked for command: "
                                       f"{command_line}")
 
@@ -104,10 +105,10 @@ IOResults = namedtuple("IOResults", ["return_code", "stdout", "stderr"])
 @unittest.mock.patch("sys.stdin", new_callable=io.StringIO)
 @unittest.mock.patch("sys.stderr", new_callable=io.StringIO)
 @unittest.mock.patch("sys.stdout", new_callable=io.StringIO)
-def call_with_io(callable, mock_stdout, mock_stderr, mock_stdin, *, input=None):
+def call_with_io(callee, mock_stdout, mock_stderr, mock_stdin, *, input=None):
     """
-    Invokes the specified callable, capturing and returning stdout and stderr
-    output.
+    Invokes the callable specified by `callee`, capturing and returning stdout
+    and stderr output.
 
     `input`, if specified, will be used as fake input to stdin.
 
@@ -117,7 +118,7 @@ def call_with_io(callable, mock_stdout, mock_stderr, mock_stdin, *, input=None):
         mock_stdin.write(input)
         mock_stdin.seek(0)
 
-    return_code = callable()
+    return_code = callee()
     return IOResults(return_code=return_code,
                      stdout=mock_stdout.getvalue(),
                      stderr=mock_stderr.getvalue())
@@ -127,9 +128,10 @@ class TestGitCommand(unittest.TestCase):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fake_run_command = FakeRunCommand()
-        gitutils.run_command = self.fake_run_command
 
     def setUp(self):
+        gitutils.run_command = self.fake_run_command
+
         def fake_git_commit_hash_action(match, result):
             result.stdout = match.group("commitish")
 
@@ -144,13 +146,46 @@ class TestGitCommand(unittest.TestCase):
 
         self.fake_run_command.set_fake_result_re(
             r"git checkout --detach (?P<commitish>.+)",
-            action=fake_git_checkout_action),
+            action=fake_git_checkout_action)
 
     def set_fake_git_head(self, commitish):
         """Fakes the current Git HEAD commit."""
         self.fake_run_command.set_fake_result(
             "git rev-parse --verify --quiet HEAD",
-            stdout=commitish),
+            stdout=commitish)
+
+
+class TestGitHaveCommit(TestGitCommand):
+    @classmethod
+    def setUpClass(cls):
+        import_file("../git-have-commit")
+
+    def setUp(self):
+        super().setUp()
+
+        self.fake_run_command.set_fake_result(
+            "git merge-base --is-ancestor parent child")
+        self.fake_run_command.set_fake_result(
+            "git merge-base --is-ancestor parent HEAD")
+        self.fake_run_command.set_fake_result(
+            "git merge-base --is-ancestor child parent",
+            return_code=1)
+
+    def test(self):
+        def run_have_commit(*args):
+            return lambda: run_script(git_have_commit, *args)
+
+        result = call_with_io(run_have_commit("--leaf=child", "parent"))
+        self.assertEqual(result.return_code, 0)
+        self.assertEqual(result.stdout, "child has commit parent.\n")
+
+        result = call_with_io(run_have_commit("--leaf=parent", "child"))
+        self.assertEqual(result.return_code, 1)
+        self.assertTrue(not result.stdout)
+
+        result = call_with_io(run_have_commit("parent"))
+        self.assertEqual(result.return_code, 0)
+        self.assertEqual(result.stdout, "HEAD has commit parent.\n")
 
 
 class TestGitNext(TestGitCommand):
