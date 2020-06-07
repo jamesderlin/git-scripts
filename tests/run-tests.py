@@ -95,14 +95,6 @@ def run_script(script, *args):
     return script.main([script.__name__, *args])
 
 
-def set_fake_git_head(fake_run_command, commitish):
-    """Fakes the current Git HEAD commit."""
-    print(f"HEAD is now at {commitish}")
-    fake_run_command.set_fake_result(
-        "git rev-parse --verify --quiet HEAD",
-        0, stdout=commitish),
-
-
 IOResults = namedtuple("IOResults", ["stdout", "stderr"])
 
 
@@ -149,6 +141,91 @@ def debug_prompt():
     code.interact(local=dict(globals(), **previous_frame.f_locals))
 
 
+class TestGitCommand(unittest.TestCase):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fake_run_command = FakeRunCommand()
+        gitutils.run_command = self.fake_run_command
+
+    def setUp(self):
+        def fake_git_commit_hash_action(match, result):
+            result.kwargs["stdout"] = match.group("commitish")
+
+        self.fake_run_command.set_fake_result_re(
+            r"git rev-parse --verify (--short )?(--quiet )?(?P<commitish>.+)",
+            0,
+            action=fake_git_commit_hash_action)
+
+        self.fake_run_command.set_fake_result_re(
+            r"git checkout --detach (?P<commitish>.+)",
+            0,
+            action=lambda match, result:
+                self.set_fake_git_head(match.group("commitish"))),
+
+        def fake_summarize_git_commit_action(match, result):
+            index = match.group("index")
+            commitish = match.group("commitish")
+            result.kwargs["stdout"] = f"{index}: {commitish} description"
+
+        self.fake_run_command.set_fake_result_re(
+            r"git log --max-count=1 '--format=\s*(?P<index>\d+):[^']*' "
+            r"(?P<commitish>.+)",
+            0,
+            action=fake_summarize_git_commit_action)
+
+    def set_fake_git_head(self, commitish):
+        """Fakes the current Git HEAD commit."""
+        print(f"HEAD is now at {commitish}")
+        self.fake_run_command.set_fake_result(
+            "git rev-parse --verify --quiet HEAD",
+            0, stdout=commitish),
+
+
+class TestGitNext(TestGitCommand):
+    def setUp(self):
+        super().setUp()
+
+        # initial --- child1 --- child2 --- child3a --- merge --- child4 --- leaf3
+        #                            \                  /   \ \
+        #                             child3b --- child3b1   \  leaf1
+        #                                                     \
+        #                                                       leaf2
+        commit_tree_string = ("leaf3\n"
+                              "leaf2\n"
+                              "leaf1\n"
+                              "child4 leaf3\n"
+                              "merge child4 leaf1 leaf2\n"
+                              "child3a merge\n"
+                              "child3b1 merge\n"
+                              "child3b child3b1\n"
+                              "child2 child3a child3b\n"
+                              "child1 child2\n"
+                              "initial child1\n")
+
+        self.fake_run_command.set_fake_result(
+            "git rev-list --children --all",
+            0, commit_tree_string)
+
+    def test(self):
+        self.set_fake_git_head("initial")
+        expect(gitutils.git_commit_hash("HEAD"), "initial")
+
+        def run_git_next():
+            return run_script(git_next)
+
+        self.assertEqual(call_with_io(run_git_next).stdout, "HEAD is now at child1\n")
+        self.assertEqual(call_with_io(run_git_next).stdout, "HEAD is now at child2\n")
+        self.assertTrue(call_with_io(run_git_next, input="1").stdout.endswith("HEAD is now at child3b\n"))
+        self.assertEqual(call_with_io(run_git_next).stdout, "HEAD is now at child3b1\n")
+        self.assertEqual(call_with_io(run_git_next).stdout, "HEAD is now at merge\n")
+        self.assertTrue(call_with_io(run_git_next, input="0").stdout.endswith("HEAD is now at child4\n"))
+        self.assertEqual(call_with_io(run_git_next).stdout, "HEAD is now at leaf3\n")
+
+        result = call_with_io(run_git_next)
+        self.assertTrue(not result.stdout)
+        self.assertEqual(result.stderr, "git-next: Could not find a child commit for leaf3\n")
+
+
 @gitutils.entrypoint(globals())
 def main(argv):
     ap = argparse.ArgumentParser(description=__doc__.strip(), add_help=False)
@@ -172,74 +249,12 @@ def main(argv):
         "git merge-base --is-ancestor child parent",
         1),
 
-
-    # initial --- child1 --- child2 --- child3a --- merge --- child4 --- leaf3
-    #                            \                  /   \ \
-    #                             child3b --- child3b1   \  leaf1
-    #                                                     \
-    #                                                       leaf2
-    commit_tree_string = ("leaf3\n"
-                          "leaf2\n"
-                          "leaf1\n"
-                          "child4 leaf3\n"
-                          "merge child4 leaf1 leaf2\n"
-                          "child3a merge\n"
-                          "child3b1 merge\n"
-                          "child3b child3b1\n"
-                          "child2 child3a child3b\n"
-                          "child1 child2\n"
-                          "initial child1\n")
-
-    fake_run_command.set_fake_result(
-        "git rev-list --children --all",
-        0, commit_tree_string)
     fake_run_command.set_fake_result(
         "git rev-parse --abbrev-ref HEAD",
         0, stdout="my-branch"),
 
-    def fake_git_commit_hash_action(match, result):
-        result.kwargs["stdout"] = match.group("commitish")
-
-    fake_run_command.set_fake_result_re(
-        r"git rev-parse --verify (--short )?(--quiet )?(?P<commitish>.+)",
-        0,
-        action=fake_git_commit_hash_action)
-
-    fake_run_command.set_fake_result_re(
-        r"git checkout --detach (?P<commitish>.+)",
-        0,
-        action=lambda match, result: set_fake_git_head(fake_run_command,
-                                                       match.group("commitish"))),
-
-    def fake_summarize_git_commit_action(match, result):
-        index = match.group("index")
-        commitish = match.group("commitish")
-        result.kwargs["stdout"] = f"{index}: {commitish} description"
-
-    fake_run_command.set_fake_result_re(
-        r"git log --max-count=1 '--format=\s*(?P<index>\d+):[^']*' "
-        r"(?P<commitish>.+)",
-        0,
-        action=fake_summarize_git_commit_action)
-
     gitutils.run_command = fake_run_command
-
-    set_fake_git_head(fake_run_command, "initial")
-    expect(gitutils.git_commit_hash("HEAD"), "initial")
-
-    def run_git_next():
-        return run_script(git_next)
-
-    expect(call_with_io(run_git_next).stdout, "HEAD is now at child1\n")
-    expect(call_with_io(run_git_next).stdout, "HEAD is now at child2\n")
-    expect(call_with_io(run_git_next, input="1").stdout.endswith("HEAD is now at child3b\n"))
-    expect(call_with_io(run_git_next).stdout, "HEAD is now at child3b1\n")
-    expect(call_with_io(run_git_next).stdout, "HEAD is now at merge\n")
-    expect(call_with_io(run_git_next, input="0").stdout.endswith("HEAD is now at child4\n"))
-    expect(call_with_io(run_git_next).stdout, "HEAD is now at leaf3\n")
-    result = call_with_io(run_git_next)
-    expect(not result.stdout)
-    expect(result.stderr, "git-next: Could not find a child commit for leaf3\n")
+    unittest.main()
 
 
 if __name__ == "__main__":
