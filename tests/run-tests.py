@@ -1,13 +1,10 @@
 #!/usr/bin/env python3
 
-"""TODO"""
-# * Hot-reloadability?
+"""Unit tests for Git scripts."""
 
 import argparse
-import code
 from collections import namedtuple
 import importlib
-import inspect
 import io
 import os
 import re
@@ -16,6 +13,7 @@ import subprocess
 import sys
 import unittest
 import unittest.mock
+
 
 def import_file(file_path, module_name=None):
     """
@@ -42,8 +40,6 @@ def import_file(file_path, module_name=None):
 
 
 import_file("../gitutils.py")
-import_file("../git-next")
-import_file("../git-have-commit")
 
 
 def args_to_command_line(args):
@@ -51,7 +47,12 @@ def args_to_command_line(args):
     return " ".join((shlex.quote(a) for a in args))
 
 
-_FakeRunResult = namedtuple("_FakerunResult", ["args", "kwargs", "action"])
+class _FakeRunResult:
+    def __init__(self, return_code=0, stdout=None, stderr=None, action=None):
+        self.return_code = return_code
+        self.stdout = stdout
+        self.stderr = stderr
+        self.action = action
 
 
 class FakeRunCommand:
@@ -60,20 +61,21 @@ class FakeRunCommand:
         self.fake_results = {}
         self.fake_results_re = []
 
-    def set_fake_result(self, command_line, *args, action=None, **kwargs):
-        self.fake_results[command_line] = _FakeRunResult(args, kwargs, action)
+    def set_fake_result(self, command_line, **kwargs):
+        self.fake_results[command_line] \
+            = _FakeRunResult(**kwargs)
 
-    def set_fake_result_re(self, command_pattern, *args, action=None, **kwargs):
+    def set_fake_result_re(self, command_pattern, **kwargs):
         self.fake_results_re.append((re.compile(command_pattern),
-                                     _FakeRunResult(args, kwargs, action)))
+                                    _FakeRunResult(**kwargs)))
 
     def __call__(self, *args, **kwargs):
         command_line = args_to_command_line((*args[0],))
         result = self.fake_results.get(command_line)
         match = None
         if result is None:
-            for (re, r) in self.fake_results_re:
-                match = re.match(command_line)
+            for (regexp, r) in self.fake_results_re:
+                match = regexp.match(command_line)
                 if match:
                     result = r
                     break
@@ -82,11 +84,12 @@ class FakeRunCommand:
                                       f"{command_line}")
 
         if result.action:
-           result.action(match, result)
+            result.action(match, result)
 
         return subprocess.CompletedProcess(args[0],
-                                           *result.args,
-                                           **result.kwargs)
+                                           result.return_code,
+                                           stdout=result.stdout,
+                                           stderr=result.stderr)
 
 
 def run_script(script, *args):
@@ -95,7 +98,7 @@ def run_script(script, *args):
     return script.main([script.__name__, *args])
 
 
-IOResults = namedtuple("IOResults", ["stdout", "stderr"])
+IOResults = namedtuple("IOResults", ["return_code", "stdout", "stderr"])
 
 
 @unittest.mock.patch("sys.stdin", new_callable=io.StringIO)
@@ -107,38 +110,17 @@ def call_with_io(callable, mock_stdout, mock_stderr, mock_stdin, *, input=None):
     output.
 
     `input`, if specified, will be used as fake input to stdin.
+
+    Returns an `IOResults` with the result of the invocation.
     """
     if input is not None:
         mock_stdin.write(input)
         mock_stdin.seek(0)
 
-    callable()
-    return IOResults(stdout=mock_stdout.getvalue(),
+    return_code = callable()
+    return IOResults(return_code=return_code,
+                     stdout=mock_stdout.getvalue(),
                      stderr=mock_stderr.getvalue())
-
-
-def expect(actual, expected=True):
-    """Verifies that an actual value matches an expected value."""
-    if actual != expected:
-        previous_frame = inspect.currentframe().f_back
-        info = inspect.getframeinfo(previous_frame)
-        raise gitutils.AbortError(f"Test failed ({info.filename}:{info.lineno}):\n"
-                                  f"  Expected: {repr(expected)}\n"
-                                  f"    Actual: {repr(actual)}\n")
-
-
-def expect_eval(expression_string):
-    previous_frame = inspect.currentframe().f_back
-    if not eval(expression_string, globals(), previous_frame.f_locals):
-        info = inspect.getframeinfo(previous_frame)
-        raise gitutils.AbortError(f"Test failed ({info.filename}:{info.lineno}):\n"
-                                  f"  Expected: {expression_string}\n")
-
-
-def debug_prompt():
-    """Starts an interactive Python prompt."""
-    previous_frame = inspect.currentframe().f_back
-    code.interact(local=dict(globals(), **previous_frame.f_locals))
 
 
 class TestGitCommand(unittest.TestCase):
@@ -149,47 +131,41 @@ class TestGitCommand(unittest.TestCase):
 
     def setUp(self):
         def fake_git_commit_hash_action(match, result):
-            result.kwargs["stdout"] = match.group("commitish")
+            result.stdout = match.group("commitish")
+
+        def fake_git_checkout_action(match, result):
+            commitish = match.group("commitish")
+            self.set_fake_git_head(commitish)
+            result.stdout = f"HEAD is now at {commitish}"
 
         self.fake_run_command.set_fake_result_re(
             r"git rev-parse --verify (--short )?(--quiet )?(?P<commitish>.+)",
-            0,
             action=fake_git_commit_hash_action)
 
         self.fake_run_command.set_fake_result_re(
             r"git checkout --detach (?P<commitish>.+)",
-            0,
-            action=lambda match, result:
-                self.set_fake_git_head(match.group("commitish"))),
-
-        def fake_summarize_git_commit_action(match, result):
-            index = match.group("index")
-            commitish = match.group("commitish")
-            result.kwargs["stdout"] = f"{index}: {commitish} description"
-
-        self.fake_run_command.set_fake_result_re(
-            r"git log --max-count=1 '--format=\s*(?P<index>\d+):[^']*' "
-            r"(?P<commitish>.+)",
-            0,
-            action=fake_summarize_git_commit_action)
+            action=fake_git_checkout_action),
 
     def set_fake_git_head(self, commitish):
         """Fakes the current Git HEAD commit."""
-        print(f"HEAD is now at {commitish}")
         self.fake_run_command.set_fake_result(
             "git rev-parse --verify --quiet HEAD",
-            0, stdout=commitish),
+            stdout=commitish),
 
 
 class TestGitNext(TestGitCommand):
+    @classmethod
+    def setUpClass(cls):
+        import_file("../git-next")
+
     def setUp(self):
         super().setUp()
 
         # initial --- child1 --- child2 --- child3a --- merge --- child4 --- leaf3
         #                            \                  /   \ \
-        #                             child3b --- child3b1   \  leaf1
+        #                             child3b --- child3b1   \ leaf1
         #                                                     \
-        #                                                       leaf2
+        #                                                      leaf2
         commit_tree_string = ("leaf3\n"
                               "leaf2\n"
                               "leaf1\n"
@@ -204,24 +180,48 @@ class TestGitNext(TestGitCommand):
 
         self.fake_run_command.set_fake_result(
             "git rev-list --children --all",
-            0, commit_tree_string)
+            stdout=commit_tree_string)
+
+        def fake_summarize_git_commit_action(match, result):
+            index = match.group("index")
+            commitish = match.group("commitish")
+            result.stdout = f"{index}: {commitish} description"
+
+        self.fake_run_command.set_fake_result_re(
+            r"git log --max-count=1 '--format=\s*(?P<index>\d+):[^']*' "
+            r"(?P<commitish>.+)",
+            action=fake_summarize_git_commit_action)
 
     def test(self):
         self.set_fake_git_head("initial")
-        expect(gitutils.git_commit_hash("HEAD"), "initial")
+        self.assertEqual(gitutils.git_commit_hash("HEAD"), "initial")
 
         def run_git_next():
             return run_script(git_next)
 
-        self.assertEqual(call_with_io(run_git_next).stdout, "HEAD is now at child1\n")
-        self.assertEqual(call_with_io(run_git_next).stdout, "HEAD is now at child2\n")
-        self.assertTrue(call_with_io(run_git_next, input="1").stdout.endswith("HEAD is now at child3b\n"))
-        self.assertEqual(call_with_io(run_git_next).stdout, "HEAD is now at child3b1\n")
-        self.assertEqual(call_with_io(run_git_next).stdout, "HEAD is now at merge\n")
-        self.assertTrue(call_with_io(run_git_next, input="0").stdout.endswith("HEAD is now at child4\n"))
-        self.assertEqual(call_with_io(run_git_next).stdout, "HEAD is now at leaf3\n")
+        call_with_io(run_git_next)
+        self.assertEqual(gitutils.git_commit_hash("HEAD"), "child1")
+
+        call_with_io(run_git_next)
+        self.assertEqual(gitutils.git_commit_hash("HEAD"), "child2")
+
+        call_with_io(run_git_next, input="1")
+        self.assertEqual(gitutils.git_commit_hash("HEAD"), "child3b")
+
+        call_with_io(run_git_next)
+        self.assertEqual(gitutils.git_commit_hash("HEAD"), "child3b1")
+
+        call_with_io(run_git_next)
+        self.assertEqual(gitutils.git_commit_hash("HEAD"), "merge")
+
+        call_with_io(run_git_next, input="0")
+        self.assertEqual(gitutils.git_commit_hash("HEAD"), "child4")
+
+        call_with_io(run_git_next)
+        self.assertEqual(gitutils.git_commit_hash("HEAD"), "leaf3")
 
         result = call_with_io(run_git_next)
+        self.assertNotEqual(result.return_code, 0)
         self.assertTrue(not result.stdout)
         self.assertEqual(result.stderr, "git-next: Could not find a child commit for leaf3\n")
 
@@ -231,29 +231,9 @@ def main(argv):
     ap = argparse.ArgumentParser(description=__doc__.strip(), add_help=False)
     ap.add_argument("-h", "--help", action="help",
                     help="Show this help message and exit.")
-    ap.add_argument("--verbose", action="store_true",
-                    help="Print verbose debugging messages.")
 
-    args = ap.parse_args(argv[1:])
+    ap.parse_args(argv[1:])
 
-    gitutils.verbose = args.verbose
-
-    fake_run_command = FakeRunCommand()
-    fake_run_command.set_fake_result(
-        "git rev-parse --verify --quiet commitish",
-        0, stdout="1234567890")
-    fake_run_command.set_fake_result(
-        "git merge-base --is-ancestor parent child",
-        0),
-    fake_run_command.set_fake_result(
-        "git merge-base --is-ancestor child parent",
-        1),
-
-    fake_run_command.set_fake_result(
-        "git rev-parse --abbrev-ref HEAD",
-        0, stdout="my-branch"),
-
-    gitutils.run_command = fake_run_command
     unittest.main()
 
 
