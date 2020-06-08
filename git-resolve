@@ -1,14 +1,21 @@
 #!/usr/bin/env python3
 
-"""Manages and resolves merge conflicts."""
+"""
+Interactively manages and resolves merge conflicts.
+
+Unlike `git mergetool`, opens conflicting files in a text editor instead of in
+a graphical merge tool.  Additionally will never automatically add files that
+still contain conflict markers.
+"""
 
 # TODO:
-# * Add option to scan for conflict markers in all files.
 # * Add option to mark files with conflict markers as unresolved.
+#   <https://stackoverflow.com/questions/2780483/>
 # * Add option to re-resolve resolved conflicts.
 # * Add options to automatically resolve conflicts with ours or theirs.
 
 import argparse
+import enum
 import os
 import re
 import subprocess
@@ -24,7 +31,12 @@ conflict_marker_re = re.compile(r"(?:[<]{7})"  # Yours
 
 
 def find_conflict_marker(file_path):
-    """TODO"""
+    """
+    Returns the line number of the first line that contains a merge conflict
+    marker the specified file.
+
+    Lines are numbered starting from 1.
+    """
     with open(file_path) as f:
         for (line_number, line) in enumerate(f, 1):
             if conflict_marker_re.match(line):
@@ -32,16 +44,36 @@ def find_conflict_marker(file_path):
     return None
 
 
+class ConflictStatus(enum.Enum):
+    """See `handle_conflicts`."""
+    NONE = enum.auto()
+    RESOLVED = enum.auto()
+    UNRESOLVED = enum.auto()
+
+
 def handle_conflicts(file_path):
-    """TODO"""
+    """
+    Prompts to resolve conflicts in the specified file.
+
+    Returns `ConflictStatus.NONE` if no conflicts were detected in the file,
+    `ConflictStatus.RESOLVED` if all conflicts were resolved, and
+    `ConflictStatus.unresolved` if conflicts remain unresolved.
+
+    Might raise `AbortError` to cancel resolving all remaining conflicts.
+    """
+    result = ConflictStatus.NONE
     while True:
         line_number = find_conflict_marker(file_path)
         if line_number is None:
+            if result == ConflictStatus.UNRESOLVED:
+                result = ConflictStatus.RESOLVED
             print(f"Resolved: {file_path}")
             gitutils.run_command(("git", "add", "--", file_path), check=True)
             break
 
         print(f"Conflicts in: {file_path}")
+        result = ConflictStatus.UNRESOLVED
+
         while True:
             try:
                 response = input("(E)dit, (s)kip, (q)uit: ").lower()
@@ -56,12 +88,14 @@ def handle_conflicts(file_path):
                 break
 
             if "skip".startswith(response):
-                return
+                return result
 
             if "quit".startswith(response):
                 raise gitutils.AbortError(cancelled=True)
 
             print(f"Unrecognized input: {response}")
+
+    return result
 
 
 @gitutils.entrypoint(globals())
@@ -71,6 +105,9 @@ def main(argv):
                     help="Show this help message and exit.")
     ap.add_argument("--verbose", action="store_true",
                     help="Print verbose debugging messages.")
+    ap.add_argument("--all", action="store_true",
+                    help="Check for conflict markers in all files awaiting "
+                         "commit, not just unmerged files.")
 
     args = ap.parse_args(argv[1:])
 
@@ -80,6 +117,8 @@ def main(argv):
                                   universal_newlines=True,
                                   check=True)
     tokens = result.stdout.split("\0")
+
+    encountered_conflicts = False
 
     # Reverse so that we can pop from the back for efficiency.
     tokens.reverse()
@@ -92,27 +131,32 @@ def main(argv):
             raise Exception("Unexpected token")
         code = token[0:2]
         file_path = token[3:]
-        if code == "UU":
-            handle_conflicts(file_path)
-        elif code == "AU":
-            # TODO: Need to figure exactly who "us" and "them" are.
-            # AU unmerged, added by us
-            pass
-        elif code == "UA":
-            # TODO
-            # UA unmerged, added by them
-            pass
-        elif code == "DU":
-            # TODO
-            # DU unmerged, deleted by us
-            pass
-        elif code == "UD":
-            # TODO
-            # UD unmerged, deleted by them
-            pass
+
         if "R" in code:
             _original_file_path = tokens.pop()  # noqa: F841
-            continue
+
+        if code in ("??", "!!"):
+            # Untracked or ignored files.
+            pass
+        elif code == "AU":
+            print(f"Conflicts in: {file_path} (added by us)")
+            encountered_conflicts = True
+        elif code == "UA":
+            print(f"Conflicts in: {file_path} (added by them)")
+            encountered_conflicts = True
+        elif code == "DU":
+            print(f"Conflicts in: {file_path} (deleted by us)")
+            encountered_conflicts = True
+        elif code == "UD":
+            print(f"Conflicts in: {file_path} (deleted by them)")
+            encountered_conflicts = True
+        elif code == "UU" or (args.all and os.path.isfile(file_path)):
+            encountered_conflicts \
+                = ((handle_conflicts(file_path) != ConflictStatus.NONE)
+                   or encountered_conflicts)
+
+    if not encountered_conflicts:
+        print("No conflicts detected.")
 
     return 0
 
