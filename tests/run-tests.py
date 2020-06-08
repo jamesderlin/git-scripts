@@ -39,6 +39,10 @@ def import_file(file_path, module_name=None):
     sys.modules[module_name] = module
 
 
+# To suppress lint warnings about using undefined variables.
+gitutils = None
+git_have_commit = None
+git_next = None
 import_file("../gitutils.py")
 
 
@@ -62,10 +66,12 @@ class FakeRunCommand:
         self.fake_results_re = []
 
     def set_fake_result(self, command_line, **kwargs):
+        """TODO"""
         self.fake_results[command_line] \
             = _FakeRunResult(**kwargs)
 
     def set_fake_result_re(self, command_pattern, **kwargs):
+        """TODO"""
         self.fake_results_re.append((re.compile(command_pattern),
                                      _FakeRunResult(**kwargs)))
 
@@ -105,7 +111,9 @@ IOResults = namedtuple("IOResults", ["return_code", "stdout", "stderr"])
 @unittest.mock.patch("sys.stdin", new_callable=io.StringIO)
 @unittest.mock.patch("sys.stderr", new_callable=io.StringIO)
 @unittest.mock.patch("sys.stdout", new_callable=io.StringIO)
-def call_with_io(callee, mock_stdout, mock_stderr, mock_stdin, *, input=None):
+# `input` is the most sensible name, and it matches what the `subprocess`
+# module uses.
+def call_with_io(callee, mock_stdout=None, mock_stderr=None, mock_stdin=None, *, input=None):  # pylint: disable=redefined-builtin
     """
     Invokes the callable specified by `callee`, capturing and returning stdout
     and stderr output.
@@ -114,6 +122,13 @@ def call_with_io(callee, mock_stdout, mock_stderr, mock_stdin, *, input=None):
 
     Returns an `IOResults` with the result of the invocation.
     """
+    # These arguments are not actually optional, but to avoid bogus pylint
+    # complaints (see <https://stackoverflow.com/a/62252941/>), we have to make
+    # them optional and then sanity-check them at runtime.
+    assert mock_stdout
+    assert mock_stderr
+    assert mock_stdin
+
     if input is not None:
         mock_stdin.write(input)
         mock_stdin.seek(0)
@@ -125,6 +140,7 @@ def call_with_io(callee, mock_stdout, mock_stderr, mock_stdin, *, input=None):
 
 
 class TestGitCommand(unittest.TestCase):
+    """TODO"""
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fake_run_command = FakeRunCommand()
@@ -156,6 +172,7 @@ class TestGitCommand(unittest.TestCase):
 
 
 class TestGitHaveCommit(TestGitCommand):
+    """TODO"""
     @classmethod
     def setUpClass(cls):
         import_file("../git-have-commit")
@@ -172,6 +189,7 @@ class TestGitHaveCommit(TestGitCommand):
             return_code=1)
 
     def test(self):
+        """"TODO"""
         def run_have_commit(*args):
             return lambda: run_script(git_have_commit, *args)
 
@@ -189,6 +207,7 @@ class TestGitHaveCommit(TestGitCommand):
 
 
 class TestGitNext(TestGitCommand):
+    """TODO"""
     @classmethod
     def setUpClass(cls):
         import_file("../git-next")
@@ -228,6 +247,7 @@ class TestGitNext(TestGitCommand):
             action=fake_summarize_git_commit_action)
 
     def test(self):
+        """TODO"""
         self.set_fake_git_head("initial")
         self.assertEqual(gitutils.git_commit_hash("HEAD"), "initial")
 
