@@ -1,0 +1,126 @@
+#!/usr/bin/env python3
+
+"""Manages and resolves merge conflicts."""
+
+# TODO:
+# * Add option to scan for conflict markers in all files.
+# * Add option to mark files with conflict markers as unresolved.
+# * Add option to re-resolve resolved conflicts.
+# * Add options to automatically resolve conflicts with ours or theirs.
+
+import argparse
+import os
+import re
+import subprocess
+import sys
+
+import gitutils
+
+
+conflict_marker_re = re.compile(r"(?:[<]{7})"  # Yours
+                                r"|(?:[|]{7})"  # Original
+                                r"|(?:[=]{7})"  # Theirs
+                                r"|(?:[>]{7})")  # End
+
+
+def find_conflict_marker(file_path):
+    """TODO"""
+    with open(file_path) as f:
+        for (line_number, line) in enumerate(f, 1):
+            if conflict_marker_re.match(line):
+                return line_number
+    return None
+
+
+def handle_conflicts(file_path):
+    """TODO"""
+    while True:
+        line_number = find_conflict_marker(file_path)
+        if line_number is None:
+            print(f"Resolved: {file_path}")
+            gitutils.run_command(("git", "add", "--", file_path), check=True)
+            break
+
+        print(f"Conflicts in: {file_path}")
+        while True:
+            try:
+                response = input("(E)dit, (s)kip, (q)uit: ").lower()
+            except EOFError:
+                response = "q"
+
+            use_default = not response
+            response = response.strip()
+
+            if use_default or "edit".startswith(response):
+                gitutils.run_editor(file_path, line_number=line_number)
+                break
+
+            if "skip".startswith(response):
+                return
+
+            if "quit".startswith(response):
+                raise gitutils.AbortError(cancelled=True)
+
+            print(f"Unrecognized input: {response}")
+
+
+@gitutils.entrypoint(globals())
+def main(argv):
+    ap = argparse.ArgumentParser(description=__doc__.strip(), add_help=False)
+    ap.add_argument("-h", "--help", action="help",
+                    help="Show this help message and exit.")
+    ap.add_argument("--verbose", action="store_true",
+                    help="Print verbose debugging messages.")
+
+    args = ap.parse_args(argv[1:])
+
+    gitutils.verbose = args.verbose
+    result = gitutils.run_command(("git", "status", "--porcelain", "-z"),
+                                  stdout=subprocess.PIPE,
+                                  universal_newlines=True,
+                                  check=True)
+    tokens = result.stdout.split("\0")
+
+    # Reverse so that we can pop from the back for efficiency.
+    tokens.reverse()
+    while tokens:
+        token = tokens.pop()
+        if not token:
+            break
+
+        if token[2] != " ":
+            raise Exception("Unexpected token")
+        code = token[0:2]
+        file_path = token[3:]
+        if code == "UU":
+            handle_conflicts(file_path)
+        elif code == "AU":
+            # TODO: Need to figure exactly who "us" and "them" are.
+            # AU unmerged, added by us
+            pass
+        elif code == "UA":
+            # TODO
+            # UA unmerged, added by them
+            pass
+        elif code == "DU":
+            # TODO
+            # DU unmerged, deleted by us
+            pass
+        elif code == "UD":
+            # TODO
+            # UD unmerged, deleted by them
+            pass
+        if "R" in code:
+            _original_file_path = tokens.pop()  # noqa: F841
+            continue
+
+    return 0
+
+
+if __name__ == "__main__":
+    __name__ = os.path.basename(__file__)  # pylint: disable=redefined-builtin
+
+    try:
+        sys.exit(main(sys.argv))
+    except KeyboardInterrupt:
+        sys.exit(1)

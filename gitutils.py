@@ -2,6 +2,7 @@
 
 import argparse
 import functools
+import os
 import subprocess
 import sys
 
@@ -79,6 +80,47 @@ def run_command(args, **kwargs):
 
     # pylint: disable=subprocess-run-check
     return subprocess.run(args, **kwargs)
+
+
+def run_editor(file_path, line_number=None):
+    """
+    Open the specified file in an editor at the specified line number, if
+    provided.
+
+    The launched editor will be chosen from, in order:
+
+    1. The `GIT_EDITOR` environment variable.
+    2. `core.editor` in the Git configuration file.
+    3. The `VISUAL` environment variable.
+    4. The `EDITOR` environment variable.
+    5. Hard-coded paths to common editors.
+
+    The order is consistent with the order described under `git help var`.
+    """
+    editor = os.environ.get("GIT_EDITOR")
+    if not editor:
+        result = run_command(("git", "config", "core.editor"),
+                             stdout=subprocess.PIPE,
+                             universal_newlines=True)
+        if result.returncode == 0:
+            editor = result.stdout.strip()
+
+    editor = (editor
+              or os.environ.get("VISUAL")
+              or os.environ.get("EDITOR"))
+
+    if not editor:
+        if os.name == "posix":
+            editor = "vi"
+        elif os.name == "nt":
+            # TODO: Check `notepad.exe`'s behavior with `+line` and `--`.
+            editor = "notepad.exe"
+            line_number = None
+
+    options = []
+    if line_number:
+        options.append(f"+{line_number}")
+    run_command((editor, *options, "--", file_path))
 
 
 def git_commit_hash(commitish, short=False):
