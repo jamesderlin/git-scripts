@@ -15,6 +15,9 @@ import unittest
 import unittest.mock
 
 
+script_dir = os.path.dirname(__file__)
+
+
 def import_file(file_path, module_name=None):
     """
     Imports a Python module from a file path.
@@ -43,7 +46,7 @@ def import_file(file_path, module_name=None):
 gitutils = None
 git_have_commit = None
 git_next = None
-import_file("../gitutils.py")
+import_file(os.path.join(script_dir, "../gitutils.py"))
 
 
 def args_to_command_line(args):
@@ -175,7 +178,7 @@ class TestGitHaveCommit(TestGitCommand):
     """TODO"""
     @classmethod
     def setUpClass(cls):
-        import_file("../git-have-commit")
+        import_file(os.path.join(script_dir, "../git-have-commit"))
 
     def setUp(self):
         super().setUp()
@@ -210,7 +213,7 @@ class TestGitNext(TestGitCommand):
     """TODO"""
     @classmethod
     def setUpClass(cls):
-        import_file("../git-next")
+        import_file(os.path.join(script_dir, "../git-next"))
 
     def setUp(self):
         super().setUp()
