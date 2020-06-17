@@ -227,3 +227,15 @@ def current_git_branch():
                          exit_code=result.returncode)
 
     return result.stdout.strip()
+
+
+def git_root():
+    """Returns the absolute path to the root of the current Git repository."""
+    result = run_command(("git", "rev-parse", "--show-toplevel"),
+                         stdout=subprocess.PIPE,
+                         universal_newlines=True)
+    if result.returncode != 0:
+        raise AbortError("Failed to determine the current git repository.",
+                         exit_code=result.returncode)
+
+    return result.stdout.strip()

@@ -120,6 +120,8 @@ def main(argv):
 
     encountered_conflicts = False
 
+    git_root = gitutils.git_root()
+
     # Reverse so that we can pop from the back for efficiency.
     tokens.reverse()
     while tokens:
@@ -130,7 +132,12 @@ def main(argv):
         if token[2] != " ":
             raise Exception("Unexpected token")
         code = token[0:2]
+
+        # `git status --porcelain` returns paths relative to the root of the
+        # current git repository, not relative to the current working
+        # directory.
         file_path = token[3:]
+        file_path = os.path.relpath(os.path.join(git_root, file_path))
 
         if "R" in code:
             _original_file_path = tokens.pop()  # noqa: F841
