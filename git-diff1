@@ -29,7 +29,8 @@ def main(argv):
                     help=git_diff_help)
     ap.add_argument("commitish", metavar="COMMIT", nargs="?",
                     default="HEAD",
-                    help="The commit-ish to show the diff of.")
+                    help="The commit-ish to show the diff of.  Defaults to "
+                         "`HEAD`.")
 
     args = ap.parse_args(argv[1:])
 

@@ -22,7 +22,7 @@ def main(argv):
     ap.add_argument("--verbose", action="store_true",
                     help="Print verbose debugging messages.")
     ap.add_argument("--leaf", default="HEAD",
-                    help="The descendant commit-ish.  Defaults to HEAD.")
+                    help="The descendant commit-ish.  Defaults to `HEAD`.")
     ap.add_argument("commit", metavar="COMMIT",
                     help="The ancestor commit-ish.")
 

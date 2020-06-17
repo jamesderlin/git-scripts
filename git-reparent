@@ -27,9 +27,10 @@ def main(argv):
                     help="Show this help message and exit.")
     ap.add_argument("--verbose", action="store_true",
                     help="Print verbose debugging messages.")
-    ap.add_argument("--dest",
+    ap.add_argument("--dest", default="HEAD",
                     help="The destination commit.  This will become the "
-                         "new parent commit of the reparented range.")
+                         "new parent commit of the reparented range.  "
+                         "Defaults to `HEAD`.")
     ap.add_argument("-i", "--interactive", dest="rebase_options", nargs=0,
                     action=gitutils.PassThroughOption,
                     help=git_rebase_help)
