@@ -34,7 +34,7 @@ def main(argv):
     ap.add_argument("-i", "--interactive", dest="rebase_options", nargs=0,
                     action=gitutils.PassThroughOption,
                     help=git_rebase_help)
-    ap.add_argument("range", metavar="COMMIT..COMMIT",
+    ap.add_argument("range", metavar="COMMIT::COMMIT",
                     help="The inclusive range of commits to reparent.  "
                          "All commits between and including the specified "
                          "commits will be reparented.  Endpoints may be "
@@ -44,7 +44,9 @@ def main(argv):
     args = ap.parse_args(argv[1:])
 
     gitutils.verbose = args.verbose
-    rebase_range = args.range.split("..")
+    rebase_range = (args.range.split("::")
+                    if "::" in args.range
+                    else args.range.split(".."))
     if len(rebase_range) != 2:
         raise gitutils.AbortError(f"Invalid commit range: {args.range}")
 
