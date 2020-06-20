@@ -48,8 +48,8 @@ def main(argv):
     if len(rebase_range) != 2:
         raise gitutils.AbortError(f"Invalid commit range: {args.range}")
 
-    # Don't use `gitutils.git_commit_hash` since the commits might specify
-    # branch names that we'll want to pass directly to `git rebase`.
+    # Use `gitutils.git_commit_hash` judiciously since the commits might
+    # specify branch names that we'll want to pass directly to `git rebase`.
     rebase_range = [(i or memoized_current_branch()) for i in rebase_range]
 
     if not gitutils.is_git_ancestor(rebase_range[0], rebase_range[1]):
@@ -61,6 +61,12 @@ def main(argv):
             raise gitutils.AbortError(
                 "Commit range does not specify an ancestor and descendant: "
                 f"{args.range}")
+
+    # `git rebase` uses an exclusive endpoint, so adjust by one commit.
+    #
+    # We don't need to preserve a branch name for this endpoint, so obtaining
+    # the commit hash here is safe.
+    rebase_range[0] = gitutils.git_commit_hash(rebase_range[0]) + "~"
 
     rebase_options = args.rebase_options or ()
     command = ("git", "rebase", *rebase_options, "--onto", args.dest, "--",
