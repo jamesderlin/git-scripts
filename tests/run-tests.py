@@ -52,6 +52,7 @@ def import_file(file_path, module_name=None):
 # To suppress lint warnings about using undefined variables.
 gitutils = None
 git_have_commit = None
+git_prev = None
 git_next = None
 import_file(os.path.join(script_dir, "../gitutils.py"))
 
@@ -240,8 +241,13 @@ class TestGitHaveCommit(TestGitCommand):
         self.assertEqual(result.stdout, "HEAD has commit parent.\n")
 
 
-class TestGitNext(TestGitCommand):
-    """Tests for `git-next`."""
+class TestGitPrevNext(TestGitCommand):
+    """Tests for `git-prev` and `git-next`."""
+
+    @staticmethod
+    def run_git_prev():
+        """Runs `git-prev`."""
+        return run_script(git_prev)
 
     @staticmethod
     def run_git_next():
@@ -250,6 +256,7 @@ class TestGitNext(TestGitCommand):
 
     @classmethod
     def setUpClass(cls):
+        import_file(os.path.join(script_dir, "../git-prev"))
         import_file(os.path.join(script_dir, "../git-next"))
 
     def setUp(self):
@@ -265,8 +272,8 @@ class TestGitNext(TestGitCommand):
                               "leaf1\n"
                               "child4 leaf3\n"
                               "merge child4 leaf1 leaf2\n"
-                              "child3a merge\n"
                               "child3b1 merge\n"
+                              "child3a merge\n"
                               "child3b child3b1\n"
                               "child2 child3a child3b\n"
                               "child1 child2\n"
@@ -284,7 +291,93 @@ class TestGitNext(TestGitCommand):
             r"git log --max-count=1 '--format=%h %s' (?P<commitish>.+)",
             action=fake_summarize_git_commit_action)
 
-    def test(self):
+    def test_graph(self):
+        """
+        Test that `gitutils.git_commit_graph()` parses `git rev-list` output.
+        """
+        def hashes_from_nodes(nodes):
+            """Returns a list of commit hashes for a list of `GraphNode`s."""
+            return [node.commit_hash for node in nodes]
+
+        def expect_node(graph, commit_hash, *, parent_hashes, child_hashes):
+            """
+            Verifies that the `GraphNode` with the specified commit hash has
+            the expected properties.
+            """
+            node = graph[commit_hash]
+            self.assertEqual(node.commit_hash, commit_hash)
+            self.assertEqual(hashes_from_nodes(node.parents), parent_hashes)
+            self.assertEqual(hashes_from_nodes(node.children), child_hashes)
+
+        graph = gitutils.git_commit_graph()
+        expect_node(graph, "initial",
+                    parent_hashes=[],
+                    child_hashes=["child1"])
+        expect_node(graph, "child1",
+                    parent_hashes=["initial"],
+                    child_hashes=["child2"])
+        expect_node(graph, "child2",
+                    parent_hashes=["child1"],
+                    child_hashes=["child3a", "child3b"])
+        expect_node(graph, "child3a",
+                    parent_hashes=["child2"],
+                    child_hashes=["merge"])
+        expect_node(graph, "child3b",
+                    parent_hashes=["child2"],
+                    child_hashes=["child3b1"])
+        expect_node(graph, "child3b1",
+                    parent_hashes=["child3b"],
+                    child_hashes=["merge"])
+        expect_node(graph, "merge",
+                    parent_hashes=["child3a", "child3b1"],
+                    child_hashes=["child4", "leaf1", "leaf2"])
+        expect_node(graph, "leaf1",
+                    parent_hashes=["merge"],
+                    child_hashes=[])
+        expect_node(graph, "leaf2",
+                    parent_hashes=["merge"],
+                    child_hashes=[])
+        expect_node(graph, "child4",
+                    parent_hashes=["merge"],
+                    child_hashes=["leaf3"])
+        expect_node(graph, "leaf3",
+                    parent_hashes=["child4"],
+                    child_hashes=[])
+
+    def test_prev(self):
+        """Test that `git-prev` navigates to the expected commits."""
+        self.set_fake_git_head("leaf3")
+        self.assertEqual(gitutils.git_commit_hash("HEAD"), "leaf3")
+
+        call_with_io(self.run_git_prev)
+        self.assertEqual(gitutils.git_commit_hash("HEAD"), "child4")
+
+        call_with_io(self.run_git_prev)
+        self.assertEqual(gitutils.git_commit_hash("HEAD"), "merge")
+
+        call_with_io(self.run_git_prev, input="2")
+        self.assertEqual(gitutils.git_commit_hash("HEAD"), "child3b1")
+
+        call_with_io(self.run_git_prev)
+        self.assertEqual(gitutils.git_commit_hash("HEAD"), "child3b")
+
+        call_with_io(self.run_git_prev)
+        self.assertEqual(gitutils.git_commit_hash("HEAD"), "child2")
+
+        call_with_io(self.run_git_prev)
+        self.assertEqual(gitutils.git_commit_hash("HEAD"), "child1")
+
+        call_with_io(self.run_git_prev)
+        self.assertEqual(gitutils.git_commit_hash("HEAD"), "initial")
+
+        result = call_with_io(self.run_git_prev)
+        self.assertNotEqual(result.return_code, 0)
+        self.assertTrue(not result.stdout)
+        self.assertEqual(
+            result.stderr,
+            "git-prev: Could not find a parent commit for initial\n")
+
+    def test_next(self):
         """Test that `git-next` navigates to the expected commits."""
         self.set_fake_git_head("initial")
         self.assertEqual(gitutils.git_commit_hash("HEAD"), "initial")
@@ -313,7 +406,8 @@ class TestGitNext(TestGitCommand):
         result = call_with_io(self.run_git_next)
         self.assertNotEqual(result.return_code, 0)
         self.assertTrue(not result.stdout)
-        self.assertEqual(result.stderr, "git-next: Could not find a child commit for leaf3\n")
+        self.assertEqual(result.stderr,
+                         "git-next: Could not find a child commit for leaf3\n")
 
 
 @gitutils.entrypoint(globals())
