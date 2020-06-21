@@ -61,29 +61,46 @@ def args_to_command_line(args):
     return " ".join((shlex.quote(a) for a in args))
 
 
-class _FakeRunResult:
-    def __init__(self, return_code=0, stdout=None, stderr=None, action=None):
-        self.return_code = return_code
-        self.stdout = stdout
-        self.stderr = stderr
-        self.action = action
-
-
 class FakeRunCommand:
     """A class to manage faked calls to `gitutils.run_command`."""
+    class FakeRunResult:
+        """
+        Stores a predetermined result for a faked command.
+
+        `return_code` specifies the exit code to be returned by the command.
+
+        `stdout` and `stderr` are strings that specify the faked output from
+        the command.
+
+        `action` specifies a callback to invoke when the faked command is
+        executed.
+        """
+        def __init__(self, return_code=0, stdout=None, stderr=None,
+                     action=None):
+            self.return_code = return_code
+            self.stdout = stdout
+            self.stderr = stderr
+            self.action = action
+
     def __init__(self):
         self.fake_results = {}
         self.fake_results_re = []
 
     def set_fake_result(self, command_line, **kwargs):
-        """TODO: set_fake_result"""
-        self.fake_results[command_line] \
-            = _FakeRunResult(**kwargs)
+        """
+        Sets the predetermined result for the specified command-line.
+
+        `kwargs` is passed through to `FakeRunResult`.
+        """
+        self.fake_results[command_line] = self.FakeRunResult(**kwargs)
 
     def set_fake_result_re(self, command_pattern, **kwargs):
-        """TODO: set_fake_result_re"""
+        """
+        Like `set_fake_result`, but sets predetermined results for all
+        command-lines that match the specified regular expression.
+        """
         self.fake_results_re.append((re.compile(command_pattern),
-                                     _FakeRunResult(**kwargs)))
+                                     self.FakeRunResult(**kwargs)))
 
     def __call__(self, *args, **kwargs):
         command_line = args_to_command_line((*args[0],))
@@ -150,7 +167,7 @@ def call_with_io(callee, mock_stdout=None, mock_stderr=None, mock_stdin=None, *,
 
 
 class TestGitCommand(unittest.TestCase):
-    """TODO: TestGitCommand"""
+    """A base class for tests that use faked `git` commands."""
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fake_run_command = FakeRunCommand()
@@ -182,7 +199,13 @@ class TestGitCommand(unittest.TestCase):
 
 
 class TestGitHaveCommit(TestGitCommand):
-    """TODO: TestGitHaveCommit"""
+    """Tests for `git-have-commit`."""
+
+    @staticmethod
+    def run_have_commit(*args):
+        """Runs `git-have-commit`."""
+        return lambda: run_script(git_have_commit, *args)
+
     @classmethod
     def setUpClass(cls):
         import_file(os.path.join(script_dir, "../git-have-commit"))
@@ -198,26 +221,33 @@ class TestGitHaveCommit(TestGitCommand):
             "git merge-base --is-ancestor child parent",
             return_code=1)
 
-    def test(self):
-        """"TODO: TestGitHaveCommit.test"""
-        def run_have_commit(*args):
-            return lambda: run_script(git_have_commit, *args)
-
-        result = call_with_io(run_have_commit("--leaf=child", "parent"))
+    def test_success(self):
+        """Test that a child includes it parent."""
+        result = call_with_io(self.run_have_commit("--leaf=child", "parent"))
         self.assertEqual(result.return_code, 0)
         self.assertEqual(result.stdout, "child has commit parent.\n")
 
-        result = call_with_io(run_have_commit("--leaf=parent", "child"))
+    def test_failure(self):
+        """Test that a parent does not include its child."""
+        result = call_with_io(self.run_have_commit("--leaf=parent", "child"))
         self.assertEqual(result.return_code, 1)
         self.assertTrue(not result.stdout)
 
-        result = call_with_io(run_have_commit("parent"))
+    def test_implicit_head(self):
+        """Test that a "HEAD" is used as the default leaf."""
+        result = call_with_io(self.run_have_commit("parent"))
         self.assertEqual(result.return_code, 0)
         self.assertEqual(result.stdout, "HEAD has commit parent.\n")
 
 
 class TestGitNext(TestGitCommand):
-    """TODO: TestGitNext"""
+    """Tests for `git-next`."""
+
+    @staticmethod
+    def run_git_next():
+        """Runs `git-next`."""
+        return run_script(git_next)
+
     @classmethod
     def setUpClass(cls):
         import_file(os.path.join(script_dir, "../git-next"))
@@ -255,35 +285,32 @@ class TestGitNext(TestGitCommand):
             action=fake_summarize_git_commit_action)
 
     def test(self):
-        """TODO: TestGitNext.test"""
+        """Test that `git-next` navigates to the expected commits."""
         self.set_fake_git_head("initial")
         self.assertEqual(gitutils.git_commit_hash("HEAD"), "initial")
 
-        def run_git_next():
-            return run_script(git_next)
-
-        call_with_io(run_git_next)
+        call_with_io(self.run_git_next)
         self.assertEqual(gitutils.git_commit_hash("HEAD"), "child1")
 
-        call_with_io(run_git_next)
+        call_with_io(self.run_git_next)
         self.assertEqual(gitutils.git_commit_hash("HEAD"), "child2")
 
-        call_with_io(run_git_next, input="2")
+        call_with_io(self.run_git_next, input="2")
         self.assertEqual(gitutils.git_commit_hash("HEAD"), "child3b")
 
-        call_with_io(run_git_next)
+        call_with_io(self.run_git_next)
         self.assertEqual(gitutils.git_commit_hash("HEAD"), "child3b1")
 
-        call_with_io(run_git_next)
+        call_with_io(self.run_git_next)
         self.assertEqual(gitutils.git_commit_hash("HEAD"), "merge")
 
-        call_with_io(run_git_next, input="1")
+        call_with_io(self.run_git_next, input="1")
         self.assertEqual(gitutils.git_commit_hash("HEAD"), "child4")
 
-        call_with_io(run_git_next)
+        call_with_io(self.run_git_next)
         self.assertEqual(gitutils.git_commit_hash("HEAD"), "leaf3")
 
-        result = call_with_io(run_git_next)
+        result = call_with_io(self.run_git_next)
         self.assertNotEqual(result.return_code, 0)
         self.assertTrue(not result.stdout)
         self.assertEqual(result.stderr, "git-next: Could not find a child commit for leaf3\n")
