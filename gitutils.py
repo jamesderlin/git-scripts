@@ -2,7 +2,9 @@
 
 import argparse
 import functools
+import math
 import os
+import shutil
 import subprocess
 import sys
 
@@ -24,6 +26,45 @@ class AbortError(Exception):
         self.exit_code = exit_code
 
 
+class PassThroughOption(argparse.Action):
+    """
+    Handles an option meant to be passed through to another command.  Appends
+    the option and its arguments to a list specified by `dest`.
+    """
+    def __call__(self, parser, namespace, values, option_string=None):
+        # argparse initially adds `self.dest` to `namespace` with its default
+        # value, so we can't use `getattr`'s default argument.
+        old_values = getattr(namespace, self.dest) or []
+        setattr(namespace, self.dest, old_values + [option_string, *values])
+
+
+class GraphNode:
+    """A node in the Git commit graph."""
+    def __init__(self, commit_hash):
+        self.commit_hash = commit_hash
+        self.parents = []
+        self.children = []
+
+    def add_children(self, children):
+        """Adds a list of `GraphNodes` as children of this one."""
+        for child in children:
+            child.parents.append(self)
+        self.children += children
+
+    def __repr__(self):
+        return f"GraphNode('{self.commit_hash}')"
+
+
+def debug_prompt():
+    """Starts an interactive Python prompt."""
+    # pylint: disable=import-outside-toplevel
+    import code
+    import inspect
+    previous_frame = inspect.currentframe().f_back
+    code.interact(local=dict(**previous_frame.f_globals,
+                             **previous_frame.f_locals))
+
+
 def entrypoint(caller_globals):
     """Returns a decorator for top-level `main` (or equivalent) functions."""
     def decorator(f):
@@ -38,18 +79,6 @@ def entrypoint(caller_globals):
                 return e.exit_code
         return wrapper
     return decorator
-
-
-class PassThroughOption(argparse.Action):
-    """
-    Handles an option meant to be passed through to another command.  Appends
-    the option and its arguments to a list specified by `dest`.
-    """
-    def __call__(self, parser, namespace, values, option_string=None):
-        # argparse initially adds `self.dest` to `namespace` with its default
-        # value, so we can't use `getattr`'s default argument.
-        old_values = getattr(namespace, self.dest) or []
-        setattr(namespace, self.dest, old_values + [option_string, *values])
 
 
 def run_command(args, **kwargs):
@@ -121,6 +150,84 @@ def run_editor(file_path, line_number=None):
     if line_number:
         options.append(f"+{line_number}")
     run_command((editor, *options, "--", file_path))
+
+
+def terminal_size():
+    """
+    Returns the terminal size.
+
+    Returns (inf, inf) if stdout is not a TTY.
+    """
+    if not sys.stdout.isatty():
+        return os.terminal_size((math.inf, math.inf))
+    return shutil.get_terminal_size()
+
+
+def ellipsize(s, width):
+    """
+    Truncates a string to the specified maximum width.
+
+    The maximum width includes the ellipsis added if the string is truncated.
+
+    Unlike `textwrap.shorten`, leaves whitespace alone.
+    """
+    if len(s) <= width:
+        return s
+
+    ellipsis = "..."
+    s = s[: (width - len(ellipsis))] + ellipsis
+    assert len(s) == width
+    return s
+
+
+def prompt_with_choices(preamble, prompt, choices):
+    """
+    Prompts the user to choose from a list.
+
+    Returns the index of the selected choice.  Raises an `AbortError` if the
+    user cancels.
+    """
+    max_length = terminal_size().columns - 1
+    instructions = "\n".join([
+        preamble,
+        *[ellipsize(f"    {i}: {choice}", width=max_length)
+          for (i, choice) in enumerate(choices, 1)],
+        # Dummy element to get a final newline.
+        "",
+    ])
+
+    print(instructions)
+
+    max_index = len(choices)
+    prompt = f"{prompt} [1..{max_index}]: "
+
+    while True:
+        try:
+            choice = input(prompt).strip()
+        except EOFError:
+            print()
+            raise AbortError(cancelled=True)
+
+        if not choice:
+            continue
+
+        if choice.lower() in ("?", "help"):
+            print()
+            print(instructions)
+            continue
+
+        if choice.lower() in ("q", "quit"):
+            raise AbortError(cancelled=True)
+
+        try:
+            index = int(choice)
+            if 1 <= index <= max_index:
+                return index - 1
+
+            print(f"{choice} is not in the range [1..{max_index}].")
+        except ValueError:
+            print(f"\"{choice}\" is not a valid index.")
+        print()
 
 
 def git_commit_hash(commitish, short=False):
@@ -209,7 +316,11 @@ def git_commit_graph():
     commit_graph = {}
     for line in result.stdout.splitlines():
         (parent_hash, *children_hashes) = line.split()
-        commit_graph.setdefault(parent_hash, []).extend(children_hashes)
+        parent_node = commit_graph.setdefault(parent_hash,
+                                              GraphNode(parent_hash))
+        parent_node.add_children(
+            [commit_graph.setdefault(child_hash, GraphNode(child_hash))
+             for child_hash in children_hashes])
     return commit_graph
 
 

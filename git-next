@@ -3,86 +3,21 @@
 """Navigates to a child commit."""
 
 import argparse
-import math
 import os
-import shutil
 import sys
 
 import gitutils
 
 
-def terminal_size():
-    """
-    Returns the terminal size.
-
-    Returns (inf, inf) if stdout is not a TTY.
-    """
-    if not sys.stdout.isatty():
-        return os.terminal_size((math.inf, math.inf))
-    return shutil.get_terminal_size()
-
-
-def ellipsize(s, width):
-    """
-    Truncates a string to the specified maximum width.
-
-    The maximum width includes the ellipsis added if the string is truncated.
-
-    Unlike `textwrap.shorten`, leaves whitespace alone.
-    """
-    if len(s) <= width:
-        return s
-
-    ellipsis = "..."
-    s = s[: (width - len(ellipsis))] + ellipsis
-    assert len(s) == width
-    return s
-
-
 def prompt_for_child(children_hashes):
     """Prompts the user to choose a child commit."""
-    instructions = ["There are multiple children:"]
-
-    max_length = terminal_size().columns - 1
-    for (i, child_hash) in enumerate(children_hashes):
-        commit_summary = gitutils.summarize_git_commit(child_hash,
-                                                       f"    {i}: %h %s")
-        instructions.append(ellipsize(commit_summary, width=max_length))
-    # Dummy element to get a final newline.
-    instructions.append("")
-    instructions = "\n".join(instructions)
-    print(instructions)
-
-    max_index = len(children_hashes) - 1
-    prompt = f"Enter the child index [0..{max_index}]: "
-
-    while True:
-        try:
-            choice = input(prompt).strip()
-        except EOFError:
-            print()
-            raise gitutils.AbortError(cancelled=True)
-
-        if not choice:
-            continue
-
-        if choice.lower() in ("?", "help"):
-            print()
-            print(instructions)
-            continue
-
-        if choice.lower() in ("q", "quit"):
-            raise gitutils.AbortError(cancelled=True)
-
-        try:
-            index = int(choice)
-            if 0 <= index <= max_index:
-                return children_hashes[index]
-
-            print(f"{choice} is not in the range [0..{max_index}].")
-        except ValueError:
-            print(f"\"{choice}\" is not a valid index.")
-        print()
+    children_descriptions = [gitutils.summarize_git_commit(child_hash, "%h %s")
+                             for child_hash in children_hashes]
+    selected_index \
+        = gitutils.prompt_with_choices("There are multiple children:",
+                                       "Enter the child index",
+                                       children_descriptions)
+    return children_hashes[selected_index]
 
 
 @gitutils.entrypoint(globals())
@@ -100,7 +35,8 @@ def main(argv):
     commit_graph = gitutils.git_commit_graph()
     head_hash = gitutils.git_commit_hash("HEAD")
 
-    children_hashes = commit_graph.get(head_hash)
+    children_hashes = [child.commit_hash
+                       for child in commit_graph.get(head_hash).children]
     if not children_hashes:
         head_hash_short = gitutils.git_commit_hash(head_hash, short=True)
         raise gitutils.AbortError(f"Could not find a child commit for "

@@ -69,12 +69,12 @@ class FakeRunCommand:
         self.fake_results_re = []
 
     def set_fake_result(self, command_line, **kwargs):
-        """TODO"""
+        """TODO: set_fake_result"""
         self.fake_results[command_line] \
             = _FakeRunResult(**kwargs)
 
     def set_fake_result_re(self, command_pattern, **kwargs):
-        """TODO"""
+        """TODO: set_fake_result_re"""
         self.fake_results_re.append((re.compile(command_pattern),
                                      _FakeRunResult(**kwargs)))
 
@@ -143,7 +143,7 @@ def call_with_io(callee, mock_stdout=None, mock_stderr=None, mock_stdin=None, *,
 
 
 class TestGitCommand(unittest.TestCase):
-    """TODO"""
+    """TODO: TestGitCommand"""
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fake_run_command = FakeRunCommand()
@@ -175,7 +175,7 @@ class TestGitCommand(unittest.TestCase):
 
 
 class TestGitHaveCommit(TestGitCommand):
-    """TODO"""
+    """TODO: TestGitHaveCommit"""
     @classmethod
     def setUpClass(cls):
         import_file(os.path.join(script_dir, "../git-have-commit"))
@@ -192,7 +192,7 @@ class TestGitHaveCommit(TestGitCommand):
             return_code=1)
 
     def test(self):
-        """"TODO"""
+        """"TODO: TestGitHaveCommit.test"""
         def run_have_commit(*args):
             return lambda: run_script(git_have_commit, *args)
 
@@ -210,7 +210,7 @@ class TestGitHaveCommit(TestGitCommand):
 
 
 class TestGitNext(TestGitCommand):
-    """TODO"""
+    """TODO: TestGitNext"""
     @classmethod
     def setUpClass(cls):
         import_file(os.path.join(script_dir, "../git-next"))
@@ -240,17 +240,15 @@ class TestGitNext(TestGitCommand):
             stdout=commit_tree_string)
 
         def fake_summarize_git_commit_action(match, result):
-            index = match.group("index")
             commitish = match.group("commitish")
-            result.stdout = f"{index}: {commitish} description"
+            result.stdout = f"{commitish} description"
 
         self.fake_run_command.set_fake_result_re(
-            r"git log --max-count=1 '--format=\s*(?P<index>\d+):[^']*' "
-            r"(?P<commitish>.+)",
+            r"git log --max-count=1 '--format=%h %s' (?P<commitish>.+)",
             action=fake_summarize_git_commit_action)
 
     def test(self):
-        """TODO"""
+        """TODO: TestGitNext.test"""
         self.set_fake_git_head("initial")
         self.assertEqual(gitutils.git_commit_hash("HEAD"), "initial")
 
@@ -263,7 +261,7 @@ class TestGitNext(TestGitCommand):
         call_with_io(run_git_next)
         self.assertEqual(gitutils.git_commit_hash("HEAD"), "child2")
 
-        call_with_io(run_git_next, input="1")
+        call_with_io(run_git_next, input="2")
         self.assertEqual(gitutils.git_commit_hash("HEAD"), "child3b")
 
         call_with_io(run_git_next)
@@ -272,7 +270,7 @@ class TestGitNext(TestGitCommand):
         call_with_io(run_git_next)
         self.assertEqual(gitutils.git_commit_hash("HEAD"), "merge")
 
-        call_with_io(run_git_next, input="0")
+        call_with_io(run_git_next, input="1")
         self.assertEqual(gitutils.git_commit_hash("HEAD"), "child4")
 
         call_with_io(run_git_next)
