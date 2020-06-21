@@ -7,17 +7,7 @@ import os
 import sys
 
 import gitutils
-
-
-def prompt_for_child(children_hashes):
-    """Prompts the user to choose a child commit."""
-    children_descriptions = [gitutils.summarize_git_commit(child_hash, "%h %s")
-                             for child_hash in children_hashes]
-    selected_index \
-        = gitutils.prompt_with_choices("There are multiple children:",
-                                       "Enter the child index",
-                                       children_descriptions)
-    return children_hashes[selected_index]
+import git_prev_next
 
 
 @gitutils.entrypoint(globals())
@@ -31,25 +21,7 @@ def main(argv):
     args = ap.parse_args(argv[1:])
 
     gitutils.verbose = args.verbose
-
-    commit_graph = gitutils.git_commit_graph()
-    head_hash = gitutils.git_commit_hash("HEAD")
-
-    children_hashes = [child.commit_hash
-                       for child in commit_graph.get(head_hash).children]
-    if not children_hashes:
-        head_hash_short = gitutils.git_commit_hash(head_hash, short=True)
-        raise gitutils.AbortError(f"Could not find a child commit for "
-                                  f"{head_hash_short}")
-
-    if len(children_hashes) == 1:
-        selected_child_hash = children_hashes[0]
-    else:
-        selected_child_hash = prompt_for_child(children_hashes)
-
-    return gitutils.run_command(
-        ("git", "checkout", "--detach", selected_child_hash),
-        bufsize=1).returncode
+    return git_prev_next.prev_or_next(git_prev_next.Mode.NEXT)
 
 
 if __name__ == "__main__":

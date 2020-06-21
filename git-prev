@@ -1,5 +1,33 @@
-#!/bin/sh
+#!/usr/bin/env python3
 
-# Switches to the parent commit.
+"""Navigates to a parent commit."""
 
-git checkout --detach HEAD~
+import argparse
+import os
+import sys
+
+import gitutils
+import git_prev_next
+
+
+@gitutils.entrypoint(globals())
+def main(argv):
+    ap = argparse.ArgumentParser(description=__doc__.strip(), add_help=False)
+    ap.add_argument("-h", "--help", action="help",
+                    help="Show this help message and exit.")
+    ap.add_argument("--verbose", action="store_true",
+                    help="Print verbose debugging messages.")
+
+    args = ap.parse_args(argv[1:])
+
+    gitutils.verbose = args.verbose
+    return git_prev_next.prev_or_next(git_prev_next.Mode.PREV)
+
+
+if __name__ == "__main__":
+    __name__ = os.path.basename(__file__)  # pylint: disable=redefined-builtin
+
+    try:
+        sys.exit(main(sys.argv))
+    except KeyboardInterrupt:
+        sys.exit(1)

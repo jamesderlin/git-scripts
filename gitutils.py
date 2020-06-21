@@ -226,7 +226,11 @@ def prompt_with_choices(preamble, prompt, choices):
 
             print(f"{choice} is not in the range [1..{max_index}].")
         except ValueError:
-            print(f"\"{choice}\" is not a valid index.")
+            print(f"\"{choice}\" is not a valid choice.\n"
+                  f"The entered choice must be between "
+                  f"1 and {max_index}, inclusive.\n"
+                  f"Enter \"help\" to show the choices again "
+                  f"or \"quit\" to quit.")
         print()
 
 
@@ -314,7 +318,11 @@ def git_commit_graph():
                          check=True,
                          universal_newlines=True)
     commit_graph = {}
-    for line in result.stdout.splitlines():
+
+    # `git rev-list` normally orders later commits on top.  Parse the output
+    # bottom-up to try to preserve parent order to avoid making a separate
+    # invocation of `git rev-list --parents --all`.
+    for line in reversed(result.stdout.splitlines()):
         (parent_hash, *children_hashes) = line.split()
         parent_node = commit_graph.setdefault(parent_hash,
                                               GraphNode(parent_hash))

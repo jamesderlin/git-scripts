@@ -5,6 +5,8 @@
 import argparse
 from collections import namedtuple
 import importlib
+import importlib.machinery
+import importlib.util
 import io
 import os
 import re
@@ -40,6 +42,11 @@ def import_file(file_path, module_name=None):
 
     globals()[module_name] = module
     sys.modules[module_name] = module
+
+    # Add the module path in case it imports other local modules.
+    module_dir = os.path.dirname(file_path)
+    if module_dir not in sys.path:
+        sys.path.insert(1, module_dir)
 
 
 # To suppress lint warnings about using undefined variables.
