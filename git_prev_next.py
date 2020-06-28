@@ -2,6 +2,7 @@
 
 """Navigates to a parent or child commit."""
 
+import argparse
 import enum
 
 import gitutils
@@ -31,8 +32,17 @@ def prompt_for_hash(mode, commit_hashes):
     return commit_hashes[selected_index]
 
 
-def prev_or_next(mode):
-    """Navigates to a parent or child commit depending on `mode`."""
+def main(mode, description, argv):
+    ap = argparse.ArgumentParser(description=description.strip(), add_help=False)
+    ap.add_argument("-h", "--help", action="help",
+                    help="Show this help message and exit.")
+    ap.add_argument("--verbose", action="store_true",
+                    help="Print verbose debugging messages.")
+
+    args = ap.parse_args(argv[1:])
+
+    gitutils.verbose = args.verbose
+
     commit_graph = gitutils.git_commit_graph()
     head_hash = gitutils.git_commit_hash("HEAD")
     head_node = commit_graph.get(head_hash)

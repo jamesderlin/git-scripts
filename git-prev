@@ -2,25 +2,15 @@
 
 """Navigates to a parent commit."""
 
-import argparse
 import sys
 
-import gitutils
 import git_prev_next
+import gitutils
 
 
 @gitutils.entrypoint(globals())
 def main(argv):
-    ap = argparse.ArgumentParser(description=__doc__.strip(), add_help=False)
-    ap.add_argument("-h", "--help", action="help",
-                    help="Show this help message and exit.")
-    ap.add_argument("--verbose", action="store_true",
-                    help="Print verbose debugging messages.")
-
-    args = ap.parse_args(argv[1:])
-
-    gitutils.verbose = args.verbose
-    return git_prev_next.prev_or_next(git_prev_next.Mode.PREV)
+    return git_prev_next.main(git_prev_next.Mode.PREV, __doc__, argv)
 
 
 if __name__ == "__main__":
