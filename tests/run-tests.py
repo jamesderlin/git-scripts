@@ -8,6 +8,7 @@ import importlib
 import importlib.machinery
 import importlib.util
 import io
+import math
 import os
 import re
 import shlex
@@ -132,7 +133,8 @@ def run_script(script, *args):
     return script.main([script.__file__, *args])
 
 
-IOResults = namedtuple("IOResults", ["return_code", "stdout", "stderr"])
+IOResults = namedtuple("IOResults",
+                       ["return_value", "exception", "stdout", "stderr"])
 
 
 @unittest.mock.patch("sys.stdin", new_callable=io.StringIO)
@@ -140,7 +142,8 @@ IOResults = namedtuple("IOResults", ["return_code", "stdout", "stderr"])
 @unittest.mock.patch("sys.stdout", new_callable=io.StringIO)
 # `input` is the most sensible name, and it matches what the `subprocess`
 # module uses.
-def call_with_io(callee, mock_stdout=None, mock_stderr=None, mock_stdin=None, *, input=None):  # pylint: disable=redefined-builtin
+def call_with_io(callee, mock_stdout=None, mock_stderr=None, mock_stdin=None,
+                 *, input=None):  # pylint: disable=redefined-builtin
     """
     Invokes the callable specified by `callee`, capturing and returning stdout
     and stderr output.
@@ -149,7 +152,7 @@ def call_with_io(callee, mock_stdout=None, mock_stderr=None, mock_stdin=None, *,
 
     Returns an `IOResults` with the result of the invocation.
     """
-    # These arguments are not actually optional, but to avoid bogus pylint
+    # These arguments are always provided, but to avoid bogus pylint
     # complaints (see <https://stackoverflow.com/a/62252941/>), we have to make
     # them optional and then sanity-check them at runtime.
     assert mock_stdout
@@ -160,10 +163,105 @@ def call_with_io(callee, mock_stdout=None, mock_stderr=None, mock_stdin=None, *,
         mock_stdin.write(input)
         mock_stdin.seek(0)
 
-    return_code = callee()
-    return IOResults(return_code=return_code,
+    return_value = None
+    exception = None
+    try:
+        return_value = callee()
+    except gitutils.AbortError as e:
+        exception = e
+    return IOResults(return_value=return_value,
+                     exception=exception,
                      stdout=mock_stdout.getvalue(),
                      stderr=mock_stderr.getvalue())
+
+
+class TestUtils(unittest.TestCase):
+    """Tests for miscellaneous `gitutils` functions."""
+
+    def setUp(self):
+        gitutils.terminal_size = lambda: os.terminal_size((math.inf, math.inf))
+
+    def test_ellipsize(self):
+        """Test `gitutils.ellipsize`."""
+        ellipsize = gitutils.ellipsize
+        self.assertRaises(AssertionError, ellipsize, "Lorem ipsum", -1)
+        self.assertRaises(AssertionError, ellipsize, "Lorem ipsum", 0)
+        self.assertEqual(ellipsize("Lorem ipsum", 1), "L")
+        self.assertEqual(ellipsize("Lorem ipsum", 2), "Lo")
+        self.assertEqual(ellipsize("Lorem ipsum", 3), "...")
+        self.assertEqual(ellipsize("Lorem ipsum", 4), "L...")
+        self.assertEqual(ellipsize("Lorem ipsum", 5), "Lo...")
+        self.assertEqual(ellipsize("Lorem ipsum", 10), "Lorem i...")
+        self.assertEqual(ellipsize("Lorem ipsum", 11), "Lorem ipsum")
+        self.assertEqual(ellipsize("Lorem ipsum", 12), "Lorem ipsum")
+        self.assertEqual(ellipsize("Lorem ipsum", 20), "Lorem ipsum")
+
+    def test_remove_prefix(self):
+        """Test `gitutils.remove_prefix`."""
+        remove_prefix = gitutils.remove_prefix
+        self.assertIs(remove_prefix("", prefix="foo"), None)
+        self.assertEqual(remove_prefix("foobar", prefix="foo"), "bar")
+        self.assertIs(remove_prefix("foobar", prefix="fool"), None)
+        self.assertIs(remove_prefix("xfoobar", prefix="foo"), None)
+        self.assertEqual(remove_prefix("foobar", prefix=""), "foobar")
+        self.assertEqual(remove_prefix("foobar", prefix="foobar"), "")
+        self.assertIs(remove_prefix("foobar", prefix="foobarbaz"), None)
+        self.assertIs(remove_prefix("foobar", prefix="bar", default="default"),
+                      "default")
+
+    def test_prompt_with_choices(self):
+        """Test `gitutils.prompt_with_choices`."""
+        prompt = gitutils.prompt_with_choices
+        choices = ["foo", "bar", "baz"]
+        result = call_with_io(lambda: prompt("Instructions",
+                                             "Choose wisely",
+                                             choices),
+                              input="1")
+        self.assertEqual(result.return_value, 0)
+        self.assertEqual(result.stdout,
+                         "Instructions\n"
+                         "  1: foo\n"
+                         "  2: bar\n"
+                         "  3: baz\n"
+                         "Choose wisely [1..3]: ")
+        self.assertEqual(result.stderr, "")
+
+        result = call_with_io(lambda: prompt("", "", choices),
+                              input="2")
+        self.assertEqual(result.return_value, 1)
+        self.assertEqual(result.stdout,
+                         "  1: foo\n"
+                         "  2: bar\n"
+                         "  3: baz\n"
+                         "[1..3]: ")
+        self.assertEqual(result.stderr, "")
+
+        result = call_with_io(lambda: prompt("Instructions", "", choices),
+                              input="0\nx\nhelp\nquit")
+        self.assertIs(result.return_value, None)
+        self.assertIsInstance(result.exception, gitutils.AbortError)
+        self.assertEqual(result.exception.cancelled, True)
+        self.assertEqual(
+            result.stdout,
+            "Instructions\n"
+            "  1: foo\n"
+            "  2: bar\n"
+            "  3: baz\n"
+            "[1..3]: "
+            "0 is not in the range [1..3].\n"
+            "\n"
+            "[1..3]: "
+            "\"x\" is not a valid choice.\n"
+            "The entered choice must be between 1 and 3, inclusive.\n"
+            "Enter \"help\" to show the choices again or \"quit\" to quit.\n"
+            "\n"
+            "[1..3]: \n"
+            "Instructions\n"
+            "  1: foo\n"
+            "  2: bar\n"
+            "  3: baz\n"
+            "[1..3]: ")
+        self.assertEqual(result.stderr, "")
 
 
 class TestGitCommand(unittest.TestCase):
@@ -224,19 +322,19 @@ class TestGitHaveCommit(TestGitCommand):
     def test_success(self):
         """Test that a child includes it parent."""
         result = call_with_io(self.run_have_commit("--leaf=child", "parent"))
-        self.assertEqual(result.return_code, 0)
+        self.assertEqual(result.return_value, 0)
         self.assertEqual(result.stdout, "child has commit parent.\n")
 
     def test_failure(self):
         """Test that a parent does not include its child."""
         result = call_with_io(self.run_have_commit("--leaf=parent", "child"))
-        self.assertEqual(result.return_code, 1)
+        self.assertEqual(result.return_value, 1)
         self.assertTrue(not result.stdout)
 
     def test_implicit_head(self):
         """Test that a "HEAD" is used as the default leaf."""
         result = call_with_io(self.run_have_commit("parent"))
-        self.assertEqual(result.return_code, 0)
+        self.assertEqual(result.return_value, 0)
         self.assertEqual(result.stdout, "HEAD has commit parent.\n")
 
 
@@ -370,7 +468,7 @@ class TestGitPrevNext(TestGitCommand):
         self.assertEqual(gitutils.git_commit_hash("HEAD"), "initial")
 
         result = call_with_io(self.run_git_prev)
-        self.assertNotEqual(result.return_code, 0)
+        self.assertNotEqual(result.return_value, 0)
         self.assertTrue(not result.stdout)
         self.assertEqual(
             result.stderr,
@@ -403,7 +501,7 @@ class TestGitPrevNext(TestGitCommand):
         self.assertEqual(gitutils.git_commit_hash("HEAD"), "leaf3")
 
         result = call_with_io(self.run_git_next)
-        self.assertNotEqual(result.return_code, 0)
+        self.assertNotEqual(result.return_value, 0)
         self.assertTrue(not result.stdout)
         self.assertEqual(result.stderr,
                          "git-next: Could not find a child commit for leaf3\n")

@@ -9,17 +9,6 @@ import sys
 import gitutils
 
 
-def remove_prefix(s, *, prefix):
-    """
-    Returns the string with the specified prefix removed.
-
-    Returns `None` if the string does not start with the prefix.
-    """
-    if s and s.startswith(prefix):
-        return s[len(prefix):]
-    return None
-
-
 @gitutils.entrypoint(globals())
 def main(argv):
     ap = argparse.ArgumentParser(description=__doc__.strip(), add_help=False)
@@ -49,7 +38,7 @@ def main(argv):
         if ref_type != "commit":
             continue
 
-        commitish = remove_prefix(name, prefix="refs/heads/")
+        commitish = gitutils.remove_prefix(name, prefix="refs/heads/")
         if commitish:
             local_branches.append(commitish)
             continue

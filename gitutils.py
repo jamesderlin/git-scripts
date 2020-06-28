@@ -160,7 +160,7 @@ def terminal_size():
     """
     Returns the terminal size.
 
-    Returns (inf, inf) if stdout is not a TTY.
+    Returns `(math.inf, math.inf)` if stdout is not a TTY.
     """
     if not sys.stdout.isatty():
         return os.terminal_size((math.inf, math.inf))
@@ -173,15 +173,32 @@ def ellipsize(s, width):
 
     The maximum width includes the ellipsis added if the string is truncated.
 
+    `width` must be a positive integer.
+
     Unlike `textwrap.shorten`, leaves whitespace alone.
     """
+    assert width > 0
     if len(s) <= width:
         return s
 
     ellipsis = "..."
-    s = s[: (width - len(ellipsis))] + ellipsis
+    if width < len(ellipsis):
+        return s[:width]
+
+    s = s[:(width - len(ellipsis))] + ellipsis
     assert len(s) == width
     return s
+
+
+def remove_prefix(s, *, prefix, default=None):
+    """
+    Returns the string with the specified prefix removed.
+
+    Returns `default` if the string does not start with the prefix.
+    """
+    if s and s.startswith(prefix):
+        return s[len(prefix):]
+    return default
 
 
 def prompt_with_choices(preamble, prompt, choices):
@@ -191,9 +208,11 @@ def prompt_with_choices(preamble, prompt, choices):
     Returns the index of the selected choice.  Raises an `AbortError` if the
     user cancels.
     """
+    assert choices
+
     max_length = terminal_size().columns - 1
     instructions = "\n".join([
-        preamble,
+        *((preamble,) if preamble else ()),
         *(ellipsize(f"  {i}: {choice}", width=max_length)
           for (i, choice) in enumerate(choices, 1)),
     ])
