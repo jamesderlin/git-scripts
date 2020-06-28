@@ -129,8 +129,7 @@ class FakeRunCommand:
 
 def run_script(script, *args):
     """Executes the `main` function from the specified script module."""
-    script.__name__ = os.path.basename(script.__file__)
-    return script.main([script.__name__, *args])
+    return script.main([script.__file__, *args])
 
 
 IOResults = namedtuple("IOResults", ["return_code", "stdout", "stderr"])
@@ -422,9 +421,4 @@ def main(argv):
 
 
 if __name__ == "__main__":
-    __name__ = os.path.basename(__file__)  # pylint: disable=redefined-builtin
-
-    try:
-        sys.exit(main(sys.argv))
-    except KeyboardInterrupt:
-        sys.exit(1)
+    sys.exit(main(sys.argv))

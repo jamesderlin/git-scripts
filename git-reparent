@@ -6,7 +6,6 @@ A friendlier wrapper for `git rebase`.
 
 import argparse
 import functools
-import os
 import sys
 
 import gitutils
@@ -77,9 +76,4 @@ def main(argv):
 
 
 if __name__ == "__main__":
-    __name__ = os.path.basename(__file__)  # pylint: disable=redefined-builtin
-
-    try:
-        sys.exit(main(sys.argv))
-    except KeyboardInterrupt:
-        sys.exit(1)
+    sys.exit(main(sys.argv))

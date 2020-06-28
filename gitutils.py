@@ -67,16 +67,20 @@ def debug_prompt():
 
 def entrypoint(caller_globals):
     """Returns a decorator for top-level `main` (or equivalent) functions."""
+    script_name = os.path.basename(caller_globals["__file__"])
+
     def decorator(f):
         @functools.wraps(f)
         def wrapper(*args, **kwargs):
+            caller_globals["__name__"] = script_name
             try:
-                return f(*args, **kwargs)
+                return f(*args, **kwargs) or 0
             except AbortError as e:
                 if not e.cancelled:
-                    script_name = caller_globals["__name__"]
                     print(f"{script_name}: {e}", file=sys.stderr)
                 return e.exit_code
+            except KeyboardInterrupt:
+                return 1
         return wrapper
     return decorator
 
