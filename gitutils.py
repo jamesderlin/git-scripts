@@ -132,11 +132,7 @@ def run_editor(file_path, line_number=None):
     """
     editor = os.environ.get("GIT_EDITOR")
     if not editor:
-        result = run_command(("git", "config", "core.editor"),
-                             stdout=subprocess.PIPE,
-                             universal_newlines=True)
-        if result.returncode == 0:
-            editor = result.stdout.strip()
+        editor = get_git_config("core", "editor")
 
     editor = (editor
               or os.environ.get("VISUAL")
@@ -254,6 +250,21 @@ def prompt_with_choices(preamble, prompt, choices):
                   f"Enter \"help\" to show the choices again "
                   f"or \"quit\" to quit.")
         print()
+
+
+def get_git_config(section, option, handler=str, default=None):
+    """Retrieves a Git configuration option."""
+    qualified_option = f"{section}.{option}"
+    result = run_command(("git", "config", qualified_option),
+                         stdout=subprocess.PIPE,
+                         universal_newlines=True)
+    if result.returncode == 0:
+        return handler(result.stdout.rstrip("\n"))
+    if result.returncode == 1:
+        return default
+
+    raise AbortError(f"Failed to retrieve config option: {qualified_option}"
+                     f"{result.returncode}")
 
 
 def git_commit_hash(commitish, short=False):
@@ -379,4 +390,4 @@ def git_root():
         raise AbortError("Failed to determine the current git repository.",
                          exit_code=result.returncode)
 
-    return result.stdout.strip()
+    return result.stdout.rstrip("\n")
