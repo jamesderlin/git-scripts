@@ -197,7 +197,7 @@ def remove_prefix(s, *, prefix, default=None):
     return default
 
 
-def prompt_with_choices(preamble, prompt, choices):
+def prompt_with_choices(choices, preamble="", prompt=""):
     """
     Prompts the user to choose from a list of choices.
 

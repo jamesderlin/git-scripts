@@ -213,9 +213,9 @@ class TestUtils(unittest.TestCase):
         """Test `gitutils.prompt_with_choices`."""
         prompt = gitutils.prompt_with_choices
         choices = ["foo", "bar", "baz"]
-        result = call_with_io(lambda: prompt("Instructions",
-                                             "Choose wisely",
-                                             choices),
+        result = call_with_io(lambda: prompt(choices,
+                                             preamble="Instructions",
+                                             prompt="Choose wisely"),
                               input="1")
         self.assertEqual(result.return_value, 0)
         self.assertEqual(result.stdout,
@@ -226,7 +226,7 @@ class TestUtils(unittest.TestCase):
                          "Choose wisely [1..3]: ")
         self.assertEqual(result.stderr, "")
 
-        result = call_with_io(lambda: prompt("", "", choices),
+        result = call_with_io(lambda: prompt(choices),
                               input="2")
         self.assertEqual(result.return_value, 1)
         self.assertEqual(result.stdout,
@@ -236,7 +236,7 @@ class TestUtils(unittest.TestCase):
                          "[1..3]: ")
         self.assertEqual(result.stderr, "")
 
-        result = call_with_io(lambda: prompt("Instructions", "", choices),
+        result = call_with_io(lambda: prompt(choices, preamble="Instructions"),
                               input="0\nx\nhelp\nquit")
         self.assertIs(result.return_value, None)
         self.assertIsInstance(result.exception, gitutils.AbortError)

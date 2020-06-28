@@ -54,10 +54,10 @@ def main(argv):
         commit_hash = gitutils.git_commit_hash("HEAD", short=True)
         selected_index \
             = gitutils.prompt_with_choices(
-                f"{commit_hash} has multiple local branches associated with "
-                f"it.",
-                "Enter the branch index",
-                local_branches)
+                local_branches,
+                preamble=f"{commit_hash} has multiple local branches "
+                         f"associated with it.",
+                prompt="Enter the branch index")
     selected_branch = local_branches[selected_index]
 
     command = ("git", "checkout", selected_branch)
