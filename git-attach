@@ -1,0 +1,79 @@
+#!/usr/bin/env python3
+
+"""Attaches a detached Git head to a local branch."""
+
+import argparse
+import subprocess
+import sys
+
+import gitutils
+
+
+def remove_prefix(s, *, prefix):
+    """
+    Returns the string with the specified prefix removed.
+
+    Returns `None` if the string does not start with the prefix.
+    """
+    if s and s.startswith(prefix):
+        return s[len(prefix):]
+    return None
+
+
+@gitutils.entrypoint(globals())
+def main(argv):
+    ap = argparse.ArgumentParser(description=__doc__.strip(), add_help=False)
+    ap.add_argument("-h", "--help", action="help",
+                    help="Show this help message and exit.")
+    ap.add_argument("--verbose", action="store_true",
+                    help="Print verbose debugging messages.")
+
+    args = ap.parse_args(argv[1:])
+
+    gitutils.verbose = args.verbose
+
+    current_branch = gitutils.current_git_branch()
+    if current_branch != "HEAD":
+        print(f"{__name__}: Already on branch: {current_branch}")
+        return 0
+
+    result = gitutils.run_command(("git", "for-each-ref", "--points-at=HEAD"),
+                                  stdout=subprocess.PIPE,
+                                  universal_newlines=True,
+                                  check=True)
+    lines = result.stdout.splitlines()
+
+    local_branches = []
+    for line in lines:
+        (_commit_hash, ref_type, name) = line.split(maxsplit=2)
+        if ref_type != "commit":
+            continue
+
+        commitish = remove_prefix(name, prefix="refs/heads/")
+        if commitish:
+            local_branches.append(commitish)
+            continue
+
+    if not local_branches:
+        commit_hash = gitutils.git_commit_hash("HEAD", short=True)
+        raise gitutils.AbortError(f"No local branches are associated with "
+                                  f"{commit_hash}")
+
+    if len(local_branches) == 1:
+        selected_index = 0
+    else:
+        commit_hash = gitutils.git_commit_hash("HEAD", short=True)
+        selected_index \
+            = gitutils.prompt_with_choices(
+                f"{commit_hash} has multiple local branches associated with "
+                f"it.",
+                "Enter the branch index",
+                local_branches)
+    selected_branch = local_branches[selected_index]
+
+    command = ("git", "checkout", selected_branch)
+    return gitutils.run_command(command).returncode
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv))

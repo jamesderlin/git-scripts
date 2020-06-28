@@ -194,16 +194,15 @@ def prompt_with_choices(preamble, prompt, choices):
     max_length = terminal_size().columns - 1
     instructions = "\n".join([
         preamble,
-        *[ellipsize(f"    {i}: {choice}", width=max_length)
-          for (i, choice) in enumerate(choices, 1)],
-        # Dummy element to get a final newline.
-        "",
+        *(ellipsize(f"  {i}: {choice}", width=max_length)
+          for (i, choice) in enumerate(choices, 1)),
     ])
 
     print(instructions)
 
     max_index = len(choices)
-    prompt = f"{prompt} [1..{max_index}]: "
+    default_prompt = f"[1..{max_index}]: "
+    prompt = f"{prompt} {default_prompt}" if prompt else default_prompt
 
     while True:
         try:
