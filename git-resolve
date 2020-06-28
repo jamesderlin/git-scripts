@@ -118,49 +118,50 @@ def main(argv):
                                   check=True)
     tokens = result.stdout.split("\0")
 
-    encountered_conflicts = False
-
     git_root = gitutils.git_root()
 
-    # Reverse so that we can pop from the back for efficiency.
-    tokens.reverse()
-    while tokens:
-        token = tokens.pop()
-        if not token:
-            break
+    encountered_conflicts = False
+    tokens_iter = iter(tokens)
+    try:
+        while True:
+            token = next(tokens_iter)
+            if not token:
+                break
 
-        if token[2] != " ":
-            raise Exception("Unexpected token")
-        code = token[0:2]
+            if token[2] != " ":
+                raise Exception("Unexpected token")
+            code = token[0:2]
 
-        # `git status --porcelain` returns paths relative to the root of the
-        # current git repository, not relative to the current working
-        # directory.
-        file_path = token[3:]
-        file_path = os.path.relpath(os.path.join(git_root, file_path))
+            # `git status --porcelain` returns paths relative to the root of
+            # the current git repository, not relative to the current working
+            # directory.
+            file_path = token[3:]
+            file_path = os.path.relpath(os.path.join(git_root, file_path))
 
-        if "R" in code:
-            _original_file_path = tokens.pop()  # noqa: F841
+            if "R" in code:
+                _original_file_path = next(tokens_iter)  # noqa: F841
 
-        if code in ("??", "!!"):
-            # Untracked or ignored files.
-            pass
-        elif code == "AU":
-            print(f"Conflicts in: {file_path} (added by us)")
-            encountered_conflicts = True
-        elif code == "UA":
-            print(f"Conflicts in: {file_path} (added by them)")
-            encountered_conflicts = True
-        elif code == "DU":
-            print(f"Conflicts in: {file_path} (deleted by us)")
-            encountered_conflicts = True
-        elif code == "UD":
-            print(f"Conflicts in: {file_path} (deleted by them)")
-            encountered_conflicts = True
-        elif code == "UU" or (args.all and os.path.isfile(file_path)):
-            encountered_conflicts \
-                = ((handle_conflicts(file_path) != ConflictStatus.NONE)
-                   or encountered_conflicts)
+            if code in ("??", "!!"):
+                # Untracked or ignored files.
+                pass
+            elif code == "AU":
+                print(f"Conflicts in: {file_path} (added by us)")
+                encountered_conflicts = True
+            elif code == "UA":
+                print(f"Conflicts in: {file_path} (added by them)")
+                encountered_conflicts = True
+            elif code == "DU":
+                print(f"Conflicts in: {file_path} (deleted by us)")
+                encountered_conflicts = True
+            elif code == "UD":
+                print(f"Conflicts in: {file_path} (deleted by them)")
+                encountered_conflicts = True
+            elif code == "UU" or (args.all and os.path.isfile(file_path)):
+                encountered_conflicts \
+                    = ((handle_conflicts(file_path) != ConflictStatus.NONE)
+                       or encountered_conflicts)
+    except StopIteration:
+        pass
 
     if not encountered_conflicts:
         print("No conflicts detected.")

@@ -72,7 +72,7 @@ def main(argv):
     rebase_options = args.rebase_options or ()
     command = ("git", "rebase", *rebase_options, "--onto", args.dest, "--",
                *rebase_range)
-    return gitutils.run_command(command, bufsize=1).returncode
+    return gitutils.run_command(command).returncode
 
 
 if __name__ == "__main__":

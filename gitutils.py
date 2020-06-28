@@ -186,7 +186,7 @@ def ellipsize(s, width):
 
 def prompt_with_choices(preamble, prompt, choices):
     """
-    Prompts the user to choose from a list.
+    Prompts the user to choose from a list of choices.
 
     Returns the index of the selected choice.  Raises an `AbortError` if the
     user cancels.

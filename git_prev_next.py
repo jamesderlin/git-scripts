@@ -53,6 +53,5 @@ def prev_or_next(mode):
     else:
         selected_hash = prompt_for_hash(mode, target_hashes)
 
-    return gitutils.run_command(
-        ("git", "checkout", "--detach", selected_hash),
-        bufsize=1).returncode
+    command = ("git", "checkout", "--detach", selected_hash)
+    return gitutils.run_command(command).returncode
