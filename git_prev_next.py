@@ -4,7 +4,6 @@
 
 import argparse
 import enum
-import os
 
 import gitutils
 
@@ -38,25 +37,22 @@ def prompt_for_hash(mode, commit_hashes):
 
 
 def main(mode, description, argv):
+    command_name = gitutils.git_extension_command_name()
     ap = argparse.ArgumentParser(description=description.strip(), add_help=False)
     ap.add_argument("-h", "--help", action="help",
                     help="Show this help message and exit.")
     ap.add_argument("--verbose", action="store_true",
                     help="Print verbose debugging messages.")
-    ap.add_argument("-a", "--attach", action="store_true",
-                    help="Automatically attach to a local branch if possible.")
+    ap.add_argument("-a", "--attach", action="store_true", default=None,
+                    help=f"Automatically attach to a local branch if "
+                         f"possible.  This can be enabled by default by "
+                         f"setting the `{command_name}.attach` configuration "
+                         f"variable to `true`.")
 
     args = ap.parse_args(argv[1:])
 
     gitutils.verbose = args.verbose
-
-    attach = getattr(args, "attach")
-    if not attach:
-        script_name = os.path.basename(argv[0])
-        command = gitutils.remove_prefix(script_name, prefix="git-",
-                                         default=__name__)
-        attach = gitutils.get_git_config(command, "attach",
-                                         handler=bool, default=False)
+    attach = gitutils.get_option(args, "attach", handler=bool, default=False)
 
     commit_graph = gitutils.git_commit_graph()
     head_hash = gitutils.git_commit_hash("HEAD")

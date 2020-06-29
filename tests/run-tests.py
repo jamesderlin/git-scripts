@@ -97,7 +97,12 @@ class FakeRunCommand:
 
 def run_script(script, *args):
     """Executes the `main` function from the specified script module."""
-    return script.main([script.__file__, *args])
+    old_argv = sys.argv
+    try:
+        sys.argv = [script.__file__, *args]
+        return script.main(sys.argv)
+    finally:
+        sys.argv = old_argv
 
 
 IOResults = namedtuple("IOResults",

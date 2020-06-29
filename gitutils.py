@@ -309,8 +309,15 @@ def prompt_for_branch(local_branches, commitish):
     return local_branches[selected_index]
 
 
-def get_git_config(section, variable_name, handler=str, default=None):
-    """Retrieves a Git configuration option."""
+def get_git_config(section, variable_name, handler=None, default=None):
+    """
+    Retrieves a Git configuration option.
+
+    If `handler` is not supplied, the value of the configuration option will be
+    returned as a string.
+
+    If the configuration option is not present, `default` will be returned.
+    """
     qualified_name = f"{section}.{variable_name}"
     options = []
     if handler is bool:
@@ -320,6 +327,8 @@ def get_git_config(section, variable_name, handler=str, default=None):
                          universal_newlines=True)
     if result.returncode == 0:
         value_string = result.stdout.rstrip("\n")
+        if not handler:
+            return value_string
         if handler is bool:
             return value_string == "true"
         return handler(value_string)
@@ -328,6 +337,34 @@ def get_git_config(section, variable_name, handler=str, default=None):
 
     raise AbortError(f"Failed to retrieve config option: {qualified_name}"
                      f"{result.returncode}")
+
+
+def get_option(args, variable_name, *, handler=None, default=None):
+    """
+    Retrieves a command-line option, falling back to a Git configuration option
+    with the same name.
+
+    Callers *must* set the default value for the command-line option to `None`.
+    """
+    value = getattr(args, variable_name)
+    if value is not None:
+        return value
+
+    return get_git_config(git_extension_command_name(), variable_name,
+                          handler=handler, default=default)
+
+
+def git_extension_command_name(extension_name=None):
+    """
+    Returns the command name for a Git extension.
+
+    For example, for an extension named `git-foo`, returns "foo".
+
+    If `extension_name` is not specified, uses the name of the current script.
+    If a command name cannot be determined, returns the extension name.
+    """
+    extension_name = extension_name or os.path.basename(sys.argv[0])
+    return remove_prefix(extension_name, prefix="git-", default=extension_name)
 
 
 def git_commit_hash(commitish, short=False):
