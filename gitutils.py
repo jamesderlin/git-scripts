@@ -239,6 +239,11 @@ def prompt_with_choices(choices, preamble="", prompt=""):
     """
     assert choices
 
+    max_index = len(choices)
+    if max_index == 1:
+        # If there's only one choice, don't bother prompting.
+        return 0
+
     max_length = terminal_size().columns - 1
     instructions = "\n".join([
         *((preamble,) if preamble else ()),
@@ -248,7 +253,6 @@ def prompt_with_choices(choices, preamble="", prompt=""):
 
     print(instructions)
 
-    max_index = len(choices)
     default_prompt = f"[1..{max_index}]: "
     prompt = f"{prompt} {default_prompt}" if prompt else default_prompt
 
@@ -285,18 +289,44 @@ def prompt_with_choices(choices, preamble="", prompt=""):
         print()
 
 
-def get_git_config(section, option, handler=str, default=None):
+def prompt_for_branch(local_branches, commitish):
+    """
+    Prompts the user to choose among several branch names.
+
+    Returns the selected branch name.
+    """
+    if len(local_branches) == 1:
+        # If there's only one choice, don't bother prompting.
+        return local_branches[0]
+
+    short_hash = git_commit_hash(commitish, short=True)
+    selected_index \
+        = prompt_with_choices(
+            local_branches,
+            preamble=f"{short_hash} has multiple local branches associated "
+                     f"with it.",
+            prompt="Enter the branch index")
+    return local_branches[selected_index]
+
+
+def get_git_config(section, variable_name, handler=str, default=None):
     """Retrieves a Git configuration option."""
-    qualified_option = f"{section}.{option}"
-    result = run_command(("git", "config", qualified_option),
+    qualified_name = f"{section}.{variable_name}"
+    options = []
+    if handler is bool:
+        options.append("--type=bool")
+    result = run_command(("git", "config", *options, qualified_name),
                          stdout=subprocess.PIPE,
                          universal_newlines=True)
     if result.returncode == 0:
-        return handler(result.stdout.rstrip("\n"))
+        value_string = result.stdout.rstrip("\n")
+        if handler is bool:
+            return value_string == "true"
+        return handler(value_string)
     if result.returncode == 1:
         return default
 
-    raise AbortError(f"Failed to retrieve config option: {qualified_option}"
+    raise AbortError(f"Failed to retrieve config option: {qualified_name}"
                      f"{result.returncode}")
 
 
@@ -412,6 +442,41 @@ def current_git_branch():
                          exit_code=result.returncode)
 
     return result.stdout.strip()
+
+
+def git_names_for(commitish, local_branches=True, remote_branches=False,
+                  tags=False):
+    """Returns a list of named references for the specified commit-ish."""
+    # TODO: Add option to return `HEAD`?
+    result = run_command(("git", "for-each-ref", f"--points-at={commitish}"),
+                         stdout=subprocess.PIPE,
+                         universal_newlines=True,
+                         check=True)
+    lines = result.stdout.splitlines()
+
+    prefixes = []
+    if local_branches:
+        prefixes.append("refs/heads/")
+    if remote_branches:
+        prefixes.append("refs/remotes/")
+    if tags:
+        prefixes.append("refs/tags/")
+    if not prefixes:
+        return []
+
+    names = []
+    for line in lines:
+        (_commit_hash, ref_type, name) = line.split(maxsplit=2)
+        if ref_type != "commit":
+            continue
+
+        for prefix in prefixes:
+            commitish = remove_prefix(name, prefix=prefix)
+            if commitish:
+                names.append(commitish)
+                break
+
+    return names
 
 
 def git_root():

@@ -4,6 +4,7 @@
 
 import argparse
 import enum
+import os
 
 import gitutils
 
@@ -15,7 +16,11 @@ class Mode(enum.Enum):
 
 
 def prompt_for_hash(mode, commit_hashes):
-    """Prompts the user to choose among several commits."""
+    """
+    Prompts the user to choose among several commits.
+
+    Returns the selected commit hash.
+    """
     if mode == Mode.PREV:
         instructions = "There are multiple parents:"
         prompt = "Enter the parent index"
@@ -38,10 +43,20 @@ def main(mode, description, argv):
                     help="Show this help message and exit.")
     ap.add_argument("--verbose", action="store_true",
                     help="Print verbose debugging messages.")
+    ap.add_argument("-a", "--attach", action="store_true",
+                    help="Automatically attach to a local branch if possible.")
 
     args = ap.parse_args(argv[1:])
 
     gitutils.verbose = args.verbose
+
+    attach = getattr(args, "attach")
+    if not attach:
+        script_name = os.path.basename(argv[0])
+        command = gitutils.remove_prefix(script_name, prefix="git-",
+                                         default=__name__)
+        attach = gitutils.get_git_config(command, "attach",
+                                         handler=bool, default=False)
 
     commit_graph = gitutils.git_commit_graph()
     head_hash = gitutils.git_commit_hash("HEAD")
@@ -63,5 +78,16 @@ def main(mode, description, argv):
     else:
         selected_hash = prompt_for_hash(mode, target_hashes)
 
-    command = ("git", "checkout", "--detach", selected_hash)
+    selected_branch = None
+    if attach:
+        local_branches = gitutils.git_names_for(selected_hash)
+        if len(local_branches) > 0:
+            selected_branch = gitutils.prompt_for_branch(local_branches,
+                                                         selected_hash)
+
+    command = ["git", "checkout"]
+    if selected_branch:
+        command.append(selected_branch)
+    else:
+        command += ["--detach", selected_hash]
     return gitutils.run_command(command).returncode

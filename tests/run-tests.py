@@ -338,6 +338,10 @@ class TestGitPrevNext(TestGitCommand):
             "git rev-list --children --all",
             stdout=commit_tree_string)
 
+        self.fake_run_command.set_fake_result_re(
+            r"git config --type=bool (prev|next).attach",
+            stdout="false")
+
         def fake_summarize_git_commit_action(match, result):
             commitish = match.group("commitish")
             result.stdout = f"{commitish} description"
