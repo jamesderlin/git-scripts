@@ -4,9 +4,6 @@
 
 import argparse
 from collections import namedtuple
-import importlib
-import importlib.machinery
-import importlib.util
 import io
 import math
 import os
@@ -17,45 +14,15 @@ import sys
 import unittest
 import unittest.mock
 
-
 script_dir = os.path.dirname(__file__)
+sys.path.insert(1, os.path.join(script_dir, ".."))
+import gitutils  # pylint: disable=wrong-import-position  # noqa: E402
 
 
-def import_file(file_path, module_name=None):
-    """
-    Imports a Python module from a file path.
-
-    Unlike normal `import`, allows importing from files that have `-`
-    characters in their names and that do not end with a `.py` extension.
-
-    If `module_name` is not specified, the module name will be derived from
-    the filename, replacing any `-` characters with `_`s.
-    """
-    # Derived from: <https://stackoverflow.com/a/56090741/>.
-    if not module_name:
-        (stem, _extension) = os.path.splitext(os.path.basename(file_path))
-        module_name = stem.replace("-", "_")
-
-    loader = importlib.machinery.SourceFileLoader(module_name, file_path)
-    spec = importlib.util.spec_from_loader(module_name, loader)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-
-    globals()[module_name] = module
-    sys.modules[module_name] = module
-
-    # Add the module path in case it imports other local modules.
-    module_dir = os.path.dirname(file_path)
-    if module_dir not in sys.path:
-        sys.path.insert(1, module_dir)
-
-
-# To suppress lint warnings about using undefined variables.
-gitutils = None
-git_have_commit = None
-git_prev = None
-git_next = None
-import_file(os.path.join(script_dir, "../gitutils.py"))
+git_have_commit = gitutils.import_file(os.path.join(script_dir,
+                                                    "../git-have-commit"))
+git_prev = gitutils.import_file(os.path.join(script_dir, "../git-prev"))
+git_next = gitutils.import_file(os.path.join(script_dir, "../git-next"))
 
 
 def args_to_command_line(args):
@@ -304,10 +271,6 @@ class TestGitHaveCommit(TestGitCommand):
         """Runs `git-have-commit`."""
         return lambda: run_script(git_have_commit, *args)
 
-    @classmethod
-    def setUpClass(cls):
-        import_file(os.path.join(script_dir, "../git-have-commit"))
-
     def setUp(self):
         super().setUp()
 
@@ -350,11 +313,6 @@ class TestGitPrevNext(TestGitCommand):
     def run_git_next():
         """Runs `git-next`."""
         return run_script(git_next)
-
-    @classmethod
-    def setUpClass(cls):
-        import_file(os.path.join(script_dir, "../git-prev"))
-        import_file(os.path.join(script_dir, "../git-next"))
 
     def setUp(self):
         super().setUp()

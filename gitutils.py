@@ -2,6 +2,9 @@
 
 import argparse
 import functools
+import importlib
+import importlib.machinery
+import importlib.util
 import math
 import os
 import shutil
@@ -83,6 +86,36 @@ def entrypoint(caller_globals):
                 return 1
         return wrapper
     return decorator
+
+
+def import_file(file_path, module_name=None):
+    """
+    Imports a Python module from a file path.
+
+    Unlike normal `import`, allows importing from files that have `-`
+    characters in their names and that do not end with a `.py` extension.
+
+    If `module_name` is not specified, the module name will be derived from
+    the filename, replacing any `-` characters with `_`s.
+    """
+    # Derived from: <https://stackoverflow.com/a/56090741/>.
+    if not module_name:
+        (stem, _extension) = os.path.splitext(os.path.basename(file_path))
+        module_name = stem.replace("-", "_")
+
+    loader = importlib.machinery.SourceFileLoader(module_name, file_path)
+    spec = importlib.util.spec_from_loader(module_name, loader)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    sys.modules[module_name] = module
+
+    # Add the module path in case it imports other local modules.
+    module_dir = os.path.dirname(file_path)
+    if module_dir not in sys.path:
+        sys.path.insert(1, module_dir)
+
+    return module
 
 
 def run_command(args, **kwargs):
