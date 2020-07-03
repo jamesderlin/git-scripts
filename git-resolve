@@ -44,7 +44,7 @@ def find_conflict_marker(file_path):
     return None
 
 
-class ConflictStatus(enum.Enum):
+class ConflictState(enum.Enum):
     """See `handle_conflicts`."""
     NONE = enum.auto()
     RESOLVED = enum.auto()
@@ -55,24 +55,24 @@ def handle_conflicts(file_path):
     """
     Prompts to resolve conflicts in the specified file.
 
-    Returns `ConflictStatus.NONE` if no conflicts were detected in the file,
-    `ConflictStatus.RESOLVED` if all conflicts were resolved, and
-    `ConflictStatus.unresolved` if conflicts remain unresolved.
+    Returns `ConflictState.NONE` if no conflicts were detected in the file,
+    `ConflictState.RESOLVED` if all conflicts were resolved, and
+    `ConflictState.unresolved` if conflicts remain unresolved.
 
     Might raise `AbortError` to cancel resolving all remaining conflicts.
     """
-    result = ConflictStatus.NONE
+    result = ConflictState.NONE
     while True:
         line_number = find_conflict_marker(file_path)
         if line_number is None:
-            if result == ConflictStatus.UNRESOLVED:
-                result = ConflictStatus.RESOLVED
+            if result == ConflictState.UNRESOLVED:
+                result = ConflictState.RESOLVED
             print(f"Resolved: {file_path}")
             gitutils.run_command(("git", "add", "--", file_path), check=True)
             break
 
         print(f"Conflicts in: {file_path}")
-        result = ConflictStatus.UNRESOLVED
+        result = ConflictState.UNRESOLVED
 
         while True:
             try:
@@ -112,7 +112,8 @@ def main(argv):
     args = ap.parse_args(argv[1:])
 
     gitutils.verbose = args.verbose
-    result = gitutils.run_command(("git", "status", "--porcelain", "-z"),
+    result = gitutils.run_command(("git", "status", "--porcelain",
+                                   "--untracked-files=no", "-z"),
                                   stdout=subprocess.PIPE,
                                   universal_newlines=True,
                                   check=True)
@@ -120,7 +121,12 @@ def main(argv):
 
     git_root = gitutils.git_root()
 
-    encountered_conflicts = False
+    # Allowed state transitions for `conflict_summary`:
+    #
+    # ---> NONE ---> RESOLVED ---> UNRESOLVED <---+
+    #       |           |                         |
+    #       +-----------+-------------------------+
+    conflict_summary = ConflictState.NONE
     tokens_iter = iter(tokens)
     try:
         while True:
@@ -141,32 +147,37 @@ def main(argv):
             if "R" in code:
                 _original_file_path = next(tokens_iter)  # noqa: F841
 
-            if code in ("??", "!!"):
-                # Untracked or ignored files.
-                pass
-            elif code == "AU":
+            if code == "AU":
                 print(f"Conflicts in: {file_path} (added by us)")
-                encountered_conflicts = True
+                conflict_summary = ConflictState.UNRESOLVED
             elif code == "UA":
                 print(f"Conflicts in: {file_path} (added by them)")
-                encountered_conflicts = True
+                conflict_summary = ConflictState.UNRESOLVED
             elif code == "DU":
                 print(f"Conflicts in: {file_path} (deleted by us)")
-                encountered_conflicts = True
+                conflict_summary = ConflictState.UNRESOLVED
             elif code == "UD":
                 print(f"Conflicts in: {file_path} (deleted by them)")
-                encountered_conflicts = True
+                conflict_summary = ConflictState.UNRESOLVED
             elif code == "UU" or (args.all and os.path.isfile(file_path)):
-                encountered_conflicts \
-                    = ((handle_conflicts(file_path) != ConflictStatus.NONE)
-                       or encountered_conflicts)
+                file_state = handle_conflicts(file_path)
+                if file_state == ConflictState.NONE:
+                    pass
+                elif file_state == ConflictState.RESOLVED:
+                    if conflict_summary == ConflictState.NONE:
+                        conflict_summary = ConflictState.RESOLVED
+                elif file_state == ConflictState.UNRESOLVED:
+                    conflict_summary = ConflictState.UNRESOLVED
+                else:
+                    assert False
     except StopIteration:
         pass
 
-    if not encountered_conflicts:
+    if conflict_summary == ConflictState.NONE:
         print("No conflicts detected.")
+        return 0
 
-    return 0
+    return 0 if conflict_summary == ConflictState.RESOLVED else 1
 
 
 if __name__ == "__main__":
