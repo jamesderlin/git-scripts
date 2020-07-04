@@ -62,6 +62,8 @@ def handle_conflicts(file_path):
     Might raise `AbortError` to cancel resolving all remaining conflicts.
     """
     result = ConflictState.NONE
+    choices = (("e", "edit"), ("s", "skip"), ("q", "quit"))
+    prompt = "(E)dit, (s)kip, (q)uit: "
     while True:
         line_number = find_conflict_marker(file_path)
         if line_number is None:
@@ -74,26 +76,17 @@ def handle_conflicts(file_path):
         print(f"Conflicts in: {file_path}")
         result = ConflictState.UNRESOLVED
 
-        while True:
-            try:
-                response = input("(E)dit, (s)kip, (q)uit: ").lower()
-            except EOFError:
-                response = "q"
+        response = gitutils.prompt_with_choices(choices, default="e",
+                                                prompt=prompt)
+        if response is None or response == "q":
+            raise gitutils.AbortError(cancelled=True)
 
-            use_default = not response
-            response = response.strip()
-
-            if use_default or "edit".startswith(response):
-                gitutils.run_editor(file_path, line_number=line_number)
-                break
-
-            if "skip".startswith(response):
-                return result
-
-            if "quit".startswith(response):
-                raise gitutils.AbortError(cancelled=True)
-
-            print(f"Unrecognized input: {response}")
+        if response == "e":
+            gitutils.run_editor(file_path, line_number=line_number)
+        elif response == "s":
+            return result
+        else:
+            assert False
 
     return result
 

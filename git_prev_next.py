@@ -30,9 +30,10 @@ def prompt_for_hash(mode, commit_hashes):
     commit_descriptions = [gitutils.summarize_git_commit(commit_hash, "%h %s")
                            for commit_hash in commit_hashes]
 
-    selected_index = gitutils.prompt_with_choices(commit_descriptions,
-                                                  preamble=instructions,
-                                                  prompt=prompt)
+    selected_index \
+        = gitutils.prompt_with_numbered_choices(commit_descriptions,
+                                                preamble=instructions,
+                                                prompt=prompt)
     return commit_hashes[selected_index]
 
 

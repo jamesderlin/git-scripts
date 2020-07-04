@@ -238,12 +238,97 @@ def remove_prefix(s, *, prefix, default=None):
     return default
 
 
-def prompt_with_choices(choices, preamble="", prompt=""):
+def prompt_with_choices(choices, default=None, prompt=None,
+                        invalid_message=None):
     """
-    Prompts the user to choose from a list of choices.
+    Prompts the user to choose from a fixed list of choices.
+
+    `choices` must be an iterable where each element is either a single string
+    or a tuple of strings.  Each tuple consists of acceptable inputs for a
+    single choice.
+
+    Returns a string indicating the selected choice.  If the choice corresponds
+    to a tuple, the first element of the chosen tuple is considered canonical
+    and will be returned.
+
+    Returns `None` if the user enters `EOF` to exit the prompt.
+
+    Choice selection is case-insensitive but case-preserving.  That is, an
+    available choice of `"Yes"` will match against input of `"YES"`, and
+    `"Yes"` will be returned.  Leading and trailing whitespace is ignored.
+
+    `default` specifies the default value to return if the user accepts the
+    prompt with empty input (an empty string or a string consisting entirely of
+    whitespace).  The default value will be returned as-is; it is the caller's
+    responsibility to ensure that it is a legal choice.  If `default` is
+    `None`, the user will be required to provide valid, non-empty input (or
+    enter `EOF`) to exit the prompt.
+
+    `prompt` specifies the string to print when prompting for input.  If
+    `None`, a prompt string will be generated automatically.
+
+    `invalid_message` specifies an error message to print if the user enters an
+    invalid choice.  This may be used to provide more details about what legal
+    inputs are.
+    """
+    def normalize_choice(choice):
+        """
+        Helper function to transform choices to a standard representation for
+        easier comparison later.
+        """
+        return tuple((choice_variant.strip().casefold()
+                      for choice_variant in choice))
+
+    assert choices
+
+    # Transform top-level elements that are single strings to be one-element
+    # tuples.
+    choices = [(choice,)
+               if isinstance(choice, str)
+               else choice
+               for choice in choices]
+    normalized_choices = [(i, normalize_choice(choice))
+                          for (i, choice) in enumerate(choices)]
+
+    if prompt is None:
+        choices_hint = "/".join((choice[0] for choice in choices))
+        default_hint = "" if default is None else f"[{default}] "
+        prompt = f"({choices_hint}) ? {default_hint}"
+
+    while True:
+        try:
+            response = input(prompt).strip().casefold()
+        except EOFError:
+            print()
+            return None
+
+        if not response:
+            if default is None:
+                continue
+            return default
+
+        for (i, choice) in normalized_choices:
+            if response in choice:
+                return choices[i][0]
+
+        print(f"\"{response}\" is not a valid choice.")
+        if invalid_message:
+            print(invalid_message)
+
+        print()
+
+
+def prompt_with_numbered_choices(choices, preamble="", prompt=None):
+    """
+    Prompts the user to choose from a potentially variable list of choices.
 
     Returns the index of the selected choice.  Raises an `AbortError` if the
     user cancels.
+
+    `prompt_with_numbered_choices` is more suitable than `prompt_with_choices`
+    for cases where the choices are not known until runtime.
+
+    Raises an `AbortError` if the user cancels or quits the prompt.
     """
     assert choices
 
@@ -266,37 +351,28 @@ def prompt_with_choices(choices, preamble="", prompt=""):
                       else f"[1..{max_index}]: ")
     prompt = f"{prompt} {default_prompt}" if prompt else default_prompt
 
+    allowed_inputs = ([str(i + 1) for i in range(max_index)]
+                      + [("?", "h", "help"), ("q", "quit")])
+
+    invalid_message = (f"The entered choice must be between 1 and "
+                       f"{max_index}, inclusive.\n"
+                       f"Enter \"help\" to show the choices again or \"quit\" "
+                       f"to quit.")
+
     while True:
-        try:
-            choice = input(prompt).strip()
-        except EOFError:
-            print()
-            raise AbortError(cancelled=True) from None
+        response = prompt_with_choices(allowed_inputs, prompt=prompt,
+                                       invalid_message=invalid_message)
+        if response is None or response == "q":
+            raise AbortError(cancelled=True)
 
-        if not choice:
-            continue
-
-        if choice.lower() in ("?", "help"):
+        if response == "?":
             print()
             print(instructions)
             continue
 
-        if choice.lower() in ("q", "quit"):
-            raise AbortError(cancelled=True)
-
-        try:
-            index = int(choice)
-            if 1 <= index <= max_index:
-                return index - 1
-
-            print(f"{choice} is not in the range [1..{max_index}].")
-        except ValueError:
-            print(f"\"{choice}\" is not a valid choice.\n"
-                  f"The entered choice must be between "
-                  f"1 and {max_index}, inclusive.\n"
-                  f"Enter \"help\" to show the choices again "
-                  f"or \"quit\" to quit.")
-        print()
+        index = int(response)
+        assert 1 <= index <= max_index
+        return index - 1
 
 
 def prompt_for_branch(local_branches, commitish):
@@ -311,7 +387,7 @@ def prompt_for_branch(local_branches, commitish):
 
     short_hash = git_commit_hash(commitish, short=True)
     selected_index \
-        = prompt_with_choices(
+        = prompt_with_numbered_choices(
             local_branches,
             preamble=f"{short_hash} has multiple local branches associated "
                      f"with it.",

@@ -181,9 +181,9 @@ class TestUtils(unittest.TestCase):
         self.assertIs(remove_prefix("foobar", prefix="bar", default="default"),
                       "default")
 
-    def test_prompt_with_choices(self):
-        """Test `gitutils.prompt_with_choices`."""
-        prompt = gitutils.prompt_with_choices
+    def test_prompt_with_numbered_choices(self):
+        """Test `gitutils.prompt_with_numbered_choices`."""
+        prompt = gitutils.prompt_with_numbered_choices
         choices = ["foo", "bar", "baz"]
         result = call_with_io(lambda: prompt(choices,
                                              preamble="Instructions",
@@ -220,7 +220,9 @@ class TestUtils(unittest.TestCase):
             "  2: bar\n"
             "  3: baz\n"
             "[1..3]: "
-            "0 is not in the range [1..3].\n"
+            "\"0\" is not a valid choice.\n"
+            "The entered choice must be between 1 and 3, inclusive.\n"
+            "Enter \"help\" to show the choices again or \"quit\" to quit.\n"
             "\n"
             "[1..3]: "
             "\"x\" is not a valid choice.\n"
