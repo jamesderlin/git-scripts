@@ -270,14 +270,27 @@ def prompt_with_choices(choices, default=None, prompt=None,
     `invalid_message` specifies an error message to print if the user enters an
     invalid choice.  This may be used to provide more details about what legal
     inputs are.
+
+    Example:
+    ```python
+    response = prompt_with_choices([("y", "yes"), ("n", "no")], default="n")
+    if response is None:
+        raise AbortError(cancelled=True)
+    if response == "y":
+        # ...
+    elif response == "n":
+        # ...
+    else
+        assert False
+    ```
     """
-    def normalize_choice(choice):
+    def normalize_choice_str(s):
         """
-        Helper function to transform choices to a standard representation for
-        easier comparison later.
+        Helper function to transform a choice string to a standard
+        representation for easier comparison later.
         """
-        return tuple((choice_variant.strip().casefold()
-                      for choice_variant in choice))
+        assert isinstance(s, str)
+        return s.strip().casefold()
 
     assert choices
 
@@ -287,13 +300,17 @@ def prompt_with_choices(choices, default=None, prompt=None,
                if isinstance(choice, str)
                else choice
                for choice in choices]
-    normalized_choices = [(i, normalize_choice(choice))
-                          for (i, choice) in enumerate(choices)]
+
+    choices_table = {
+        normalize_choice_str(choice_str): choice_tuple[0]
+        for choice_tuple in choices
+        for choice_str in choice_tuple
+    }
 
     if prompt is None:
         choices_hint = "/".join((choice[0] for choice in choices))
         default_hint = "" if default is None else f"[{default}] "
-        prompt = f"({choices_hint}) ? {default_hint}"
+        prompt = f"({choices_hint})? {default_hint}"
 
     while True:
         try:
@@ -307,13 +324,12 @@ def prompt_with_choices(choices, default=None, prompt=None,
                 continue
             return default
 
-        for (i, choice) in normalized_choices:
-            if response in choice:
-                return choices[i][0]
-
-        print(f"\"{response}\" is not a valid choice.")
-        if invalid_message:
-            print(invalid_message)
+        try:
+            return choices_table[response]
+        except KeyError:
+            print(f"\"{response}\" is not a valid choice.")
+            if invalid_message:
+                print(invalid_message)
 
         print()
 
