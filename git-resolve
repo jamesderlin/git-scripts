@@ -90,6 +90,80 @@ def handle_conflicts(file_path):
     return result
 
 
+class GitStatusParser:
+    """Parser for tokens from `git status`."""
+    def __init__(self, check_all_files):
+        self.git_root = gitutils.git_root()
+        self.check_all_files = check_all_files
+        self.conflict_summary = ConflictState.NONE
+
+    def parse(self, tokens):
+        """Parses tokens from `git status`."""
+        tokens_iter = iter(tokens)
+        try:
+            while True:
+                self.process_next_token(tokens_iter)
+        except StopIteration:
+            pass
+
+    def process_next_token(self, tokens_iter):
+        """Processes the next token read from `git status`."""
+        token = next(tokens_iter)
+        if not token:
+            return
+
+        if token[2] != " ":
+            raise gitutils.AbortError(f"Unexpected token: {token}")
+        code = token[0:2]
+
+        # `git status --porcelain` returns paths relative to the root of the
+        # current git repository, not relative to the current working
+        # directory.
+        file_path = token[3:]
+        file_path = os.path.relpath(os.path.join(self.git_root, file_path))
+
+        if "R" in code:
+            _original_file_path = next(tokens_iter)  # noqa: F841
+
+        if code == "AU":
+            print(f"Conflicts in: {file_path} (added by us)")
+            self.update_conflict_summary(ConflictState.UNRESOLVED)
+        elif code == "UA":
+            print(f"Conflicts in: {file_path} (added by them)")
+            self.update_conflict_summary(ConflictState.UNRESOLVED)
+        elif code == "DU":
+            print(f"Conflicts in: {file_path} (deleted by us)")
+            self.update_conflict_summary(ConflictState.UNRESOLVED)
+        elif code == "UD":
+            print(f"Conflicts in: {file_path} (deleted by them)")
+            self.update_conflict_summary(ConflictState.UNRESOLVED)
+        elif (code == "UU"
+              or (self.check_all_files and os.path.isfile(file_path))):
+            file_state = handle_conflicts(file_path)
+            self.update_conflict_summary(file_state)
+
+    def update_conflict_summary(self, file_state):
+        """
+        Updates the current `ConflictState` summary by combining it with the
+        `ConflictState` from a single file.
+
+        Allowed state transitions for `conflict_summary`:
+
+        ---> NONE ---> RESOLVED ---> UNRESOLVED <---+
+              |           |                         |
+              +-----------+-------------------------+
+        """
+        if file_state == ConflictState.NONE:
+            pass
+        elif file_state == ConflictState.RESOLVED:
+            if self.conflict_summary == ConflictState.NONE:
+                self.conflict_summary = ConflictState.RESOLVED
+        elif file_state == ConflictState.UNRESOLVED:
+            self.conflict_summary = ConflictState.UNRESOLVED
+        else:
+            assert False
+
+
 @gitutils.entrypoint(globals())
 def main(argv):
     ap = argparse.ArgumentParser(description=__doc__.strip(), add_help=False)
@@ -111,65 +185,13 @@ def main(argv):
                                   check=True)
     tokens = result.stdout.split("\0")
 
-    git_root = gitutils.git_root()
-
-    # Allowed state transitions for `conflict_summary`:
-    #
-    # ---> NONE ---> RESOLVED ---> UNRESOLVED <---+
-    #       |           |                         |
-    #       +-----------+-------------------------+
-    conflict_summary = ConflictState.NONE
-    tokens_iter = iter(tokens)
-    try:
-        while True:
-            token = next(tokens_iter)
-            if not token:
-                break
-
-            if token[2] != " ":
-                raise Exception("Unexpected token")
-            code = token[0:2]
-
-            # `git status --porcelain` returns paths relative to the root of
-            # the current git repository, not relative to the current working
-            # directory.
-            file_path = token[3:]
-            file_path = os.path.relpath(os.path.join(git_root, file_path))
-
-            if "R" in code:
-                _original_file_path = next(tokens_iter)  # noqa: F841
-
-            if code == "AU":
-                print(f"Conflicts in: {file_path} (added by us)")
-                conflict_summary = ConflictState.UNRESOLVED
-            elif code == "UA":
-                print(f"Conflicts in: {file_path} (added by them)")
-                conflict_summary = ConflictState.UNRESOLVED
-            elif code == "DU":
-                print(f"Conflicts in: {file_path} (deleted by us)")
-                conflict_summary = ConflictState.UNRESOLVED
-            elif code == "UD":
-                print(f"Conflicts in: {file_path} (deleted by them)")
-                conflict_summary = ConflictState.UNRESOLVED
-            elif code == "UU" or (args.all and os.path.isfile(file_path)):
-                file_state = handle_conflicts(file_path)
-                if file_state == ConflictState.NONE:
-                    pass
-                elif file_state == ConflictState.RESOLVED:
-                    if conflict_summary == ConflictState.NONE:
-                        conflict_summary = ConflictState.RESOLVED
-                elif file_state == ConflictState.UNRESOLVED:
-                    conflict_summary = ConflictState.UNRESOLVED
-                else:
-                    assert False
-    except StopIteration:
-        pass
-
-    if conflict_summary == ConflictState.NONE:
+    parser = GitStatusParser(args.all)
+    parser.parse(tokens)
+    if parser.conflict_summary == ConflictState.NONE:
         print("No conflicts detected.")
         return 0
 
-    return 0 if conflict_summary == ConflictState.RESOLVED else 1
+    return 0 if parser.conflict_summary == ConflictState.RESOLVED else 1
 
 
 if __name__ == "__main__":
