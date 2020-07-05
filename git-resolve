@@ -125,12 +125,28 @@ class GitStatusParser:
         if "R" in code:
             _original_file_path = next(tokens_iter)  # noqa: F841
 
-        if code == "AU":
+        # TODO: Provide resolution options for the other conflict types.
+        if code == "AA":
+            print(f"Conflicts in: {file_path} (added by both)")
+            self.conflict_summary = ConflictState.UNRESOLVED
+        elif code == "AU":
             print(f"Conflicts in: {file_path} (added by us)")
             self.update_conflict_summary(ConflictState.UNRESOLVED)
         elif code == "UA":
             print(f"Conflicts in: {file_path} (added by them)")
             self.update_conflict_summary(ConflictState.UNRESOLVED)
+        elif code == "DD":
+            print(f"Conflicts in: {file_path} (deleted by both)")
+            response = gitutils.prompt_with_choices("Delete (Y/n)? ",
+                                                    (("y", "yes"),
+                                                     ("n", "no")),
+                                                    default="y")
+            if response == "y":
+                gitutils.run_command(("git", "rm", "--quiet", "--", file_path),
+                                     stdout=subprocess.DEVNULL)
+                self.update_conflict_summary(ConflictState.RESOLVED)
+            else:
+                self.update_conflict_summary(ConflictState.UNRESOLVED)
         elif code == "DU":
             print(f"Conflicts in: {file_path} (deleted by us)")
             self.update_conflict_summary(ConflictState.UNRESOLVED)
