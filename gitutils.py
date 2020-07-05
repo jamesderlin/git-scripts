@@ -77,6 +77,18 @@ class GraphNode:
         return f"GraphNode('{self.commit_hash}')"
 
 
+def debug_print(message):
+    """
+    Prints a message if `verbose` mode is enabled.
+
+    `message` may be string or a zero-argument function that returns a string.
+    """
+    if verbose:
+        if message is callable:
+            message = message()
+        print(message, file=sys.stderr)
+
+
 def debug_prompt():
     """Starts an interactive Python prompt."""
     # pylint: disable=import-outside-toplevel
@@ -122,7 +134,7 @@ def entrypoint(caller_globals):
 
 def import_file(file_path, module_name=None):
     """
-    Imports a Python module from a file path.
+    Imports and returns a Python module from a file path.
 
     Unlike normal `import`, allows importing from files that have `-`
     characters in their names and that do not end with a `.py` extension.
@@ -135,6 +147,7 @@ def import_file(file_path, module_name=None):
         (stem, _extension) = os.path.splitext(os.path.basename(file_path))
         module_name = stem.replace("-", "_")
 
+    file_path = os.path.abspath(file_path)
     loader = importlib.machinery.SourceFileLoader(module_name, file_path)
     spec = importlib.util.spec_from_loader(module_name, loader)
     module = importlib.util.module_from_spec(spec)
@@ -314,7 +327,9 @@ def git_extension_command_name(extension_name=None):
 
     For example, for an extension named `git-foo`, returns "foo".
 
-    If `extension_name` is not specified, uses the name of the current script.
+    If `extension_name` is not specified, uses the name of the current script,
+    determined from `sys.argv[0]`.
+
     If a command name cannot be determined, returns the extension name.
     """
     extension_name = extension_name or os.path.basename(sys.argv[0])

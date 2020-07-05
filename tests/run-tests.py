@@ -14,7 +14,7 @@ import unittest
 import unittest.mock
 
 script_dir = os.path.dirname(__file__)
-sys.path.insert(1, os.path.join(script_dir, ".."))
+sys.path.insert(1, os.path.abspath(os.path.join(script_dir, "..")))
 import gitutils  # pylint: disable=wrong-import-position  # noqa: E402
 
 
