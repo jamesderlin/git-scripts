@@ -157,32 +157,22 @@ def run_editor(file_path, line_number=None):
 
     1. The `GIT_EDITOR` environment variable.
     2. `core.editor` in the Git configuration file.
-    3. The `VISUAL` environment variable.
-    4. The `EDITOR` environment variable.
-    5. Hard-coded paths to common editors.
+    3. The editor chosen by `spawn_editor.edit_file`.
 
     The order is consistent with the order described under `git help var`.
     """
+    import spawneditor  # pylint: disable=import-outside-toplevel
+
     editor = os.environ.get("GIT_EDITOR")
     if not editor:
         editor = get_git_config("core", "editor")
 
-    editor = (editor
-              or os.environ.get("VISUAL")
-              or os.environ.get("EDITOR"))
-
-    if not editor:
-        if os.name == "posix":
-            editor = "vi"
-        elif os.name == "nt":
-            # TODO: Check `notepad.exe`'s behavior with `+line` and `--`.
-            editor = "notepad.exe"
-            line_number = None
-
-    options = []
-    if line_number:
-        options.append(f"+{line_number}")
-    run_command((editor, *options, "--", file_path))
+    try:
+        spawneditor.edit_file(file_path, line_number=line_number, editor=editor)
+    except spawneditor.UnsupportedPlatformError as e:
+        raise AbortError("Unable to determine what text editor to use.  "
+                         "See the GIT_EDITOR section from `git help var`.") \
+              from e
 
 
 def terminal_size():
@@ -261,7 +251,7 @@ def prompt_with_choices(choices, preamble="", prompt=""):
             choice = input(prompt).strip()
         except EOFError:
             print()
-            raise AbortError(cancelled=True)
+            raise AbortError(cancelled=True) from None
 
         if not choice:
             continue
