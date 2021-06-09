@@ -7,6 +7,7 @@ import importlib.machinery
 import importlib.util
 import math
 import os
+import shlex
 import shutil
 import subprocess
 import sys
@@ -35,10 +36,27 @@ class PassThroughOption(argparse.Action):
     the option and its arguments to a list specified by `dest`.
     """
     def __call__(self, parser, namespace, values, option_string=None):
+        if not values:
+            new_value = option_string
+        else:
+            values_string = shlex.quote(" ".join((shlex.quote(token)
+                                                  for token in values)))
+
+            # If the option has an argument, always use the forms `-oARGUMENT`
+            # or `--option=ARGUMENT` instead of separating the argument with
+            # a space.   Some `git` commands (e.g. `git diff`) will treat
+            # option arguments separated by spaces as ambiguous.
+            new_value = (("{option_string}={values_string}"
+                          if option_string.startswith("--")
+                          else "{option_string}{values_string}")
+                         .format(option_string=option_string,
+                                 values_string=values_string))
+
         # argparse initially adds `self.dest` to `namespace` with its default
         # value, so we can't use `getattr`'s default argument.
         old_values = getattr(namespace, self.dest) or []
-        setattr(namespace, self.dest, old_values + [option_string, *values])
+        old_values.append(new_value)
+        setattr(namespace, self.dest, old_values)
 
 
 class GraphNode:
