@@ -206,9 +206,9 @@ def terminal_size():
 
 def ellipsize(s, width):
     """
-    Truncates a string to the specified maximum width.
+    Truncates a string to the specified maximum width (in code points).
 
-    The maximum width includes the ellipsis added if the string is truncated.
+    The maximum width includes the added ellipsis if the string is truncated.
 
     `width` must be a positive integer.
 
@@ -261,7 +261,9 @@ def prompt_with_choices(choices, preamble="", prompt=""):
 
     print(instructions)
 
-    default_prompt = f"[1..{max_index}]: "
+    default_prompt = ("[1, 2]: "
+                      if max_index == 2
+                      else f"[1..{max_index}]: ")
     prompt = f"{prompt} {default_prompt}" if prompt else default_prompt
 
     while True:
