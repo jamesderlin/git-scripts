@@ -17,11 +17,25 @@ def memoized_current_branch():
     return gitutils.current_git_branch()
 
 
+_epilog = """\
+A note on syntax:
+    The `COMMIT::COMMIT` syntax for specifying a commit range with inclusive
+    endpoints is borrowed from Mercurial.  Although Mercurial also supports
+    using `COMMIT..COMMIT` to specify closed intervals, Git already uses that
+    syntax to specify half-open intervals.
+"""
+
+
 @gitutils.entrypoint(globals())
 def main(argv):
     git_rebase_help = "See `git help rebase`."
 
-    ap = argparse.ArgumentParser(description=__doc__.strip(), add_help=False)
+    ap = argparse.ArgumentParser(
+        description=__doc__.strip(),
+        epilog=_epilog,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        add_help=False,
+    )
     ap.add_argument("-h", "--help", action="help",
                     help="Show this help message and exit.")
     ap.add_argument("--verbose", action="store_true",

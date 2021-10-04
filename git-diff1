@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-"""Shows a diff for a single git commit."""
+"""Shows the diff for a single git commit."""
 
 import argparse
 import sys
