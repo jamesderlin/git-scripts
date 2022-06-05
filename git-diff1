@@ -10,8 +10,6 @@ import gitutils
 
 @gitutils.entrypoint(globals())
 def main(argv):
-    git_diff_help = "See `git help diff`."
-
     ap = argparse.ArgumentParser(description=__doc__.strip(), add_help=False,
                                  allow_abbrev=False)
     ap.add_argument("-h", "--help", action="help",
