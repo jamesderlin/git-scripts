@@ -185,10 +185,12 @@ class TestUtils(unittest.TestCase):
         """Test `gitutils.prompt_with_numbered_choices`."""
         prompt = gitutils.prompt_with_numbered_choices
         choices = ["foo", "bar", "baz"]
+
+        # Test instructions.
         result = call_with_io(lambda: prompt(choices,
                                              preamble="Instructions",
                                              prompt="Choose wisely"),
-                              input="1")
+                              input="1\n")
         self.assertEqual(result.return_value, 0)
         self.assertEqual(result.stdout,
                          "Instructions\n"
@@ -198,8 +200,9 @@ class TestUtils(unittest.TestCase):
                          "Choose wisely [1..3]: ")
         self.assertEqual(result.stderr, "")
 
+        # Test default prompt.
         result = call_with_io(lambda: prompt(choices),
-                              input="2")
+                              input="2\n")
         self.assertEqual(result.return_value, 1)
         self.assertEqual(result.stdout,
                          "  1: foo\n"
@@ -208,11 +211,33 @@ class TestUtils(unittest.TestCase):
                          "[1..3]: ")
         self.assertEqual(result.stderr, "")
 
+        # Test with no choices.
+        result = call_with_io(lambda: prompt([]))
+        self.assertEqual(result.return_value, None)
+        self.assertEqual(result.stdout, "")
+        self.assertEqual(result.stderr, "")
+
+        # Test with only one choice.
+        result = call_with_io(lambda: prompt(["foo"]))
+        self.assertEqual(result.return_value, 0)
+        self.assertEqual(result.stdout, "")
+        self.assertEqual(result.stderr, "")
+
+        # Test default index.
+        result = call_with_io(lambda: prompt(choices, default_index=0),
+                              input="\n")
+        self.assertEqual(result.return_value, 0)
+        self.assertEqual(result.stdout,
+                         "  1: foo\n"
+                         "  2: bar\n"
+                         "  3: baz\n"
+                         "[1..3]: [1] ")
+        self.assertEqual(result.stderr, "")
+
+        # Test invalid input.
         result = call_with_io(lambda: prompt(choices, preamble="Instructions"),
-                              input="0\nx\nhelp\nquit")
+                              input="0\nx\nhelp\nquit\n")
         self.assertIs(result.return_value, None)
-        self.assertIsInstance(result.exception, gitutils.AbortError)
-        self.assertEqual(result.exception.cancelled, True)
         self.assertEqual(
             result.stdout,
             "Instructions\n"
@@ -421,7 +446,7 @@ class TestGitPrevNext(TestGitCommand):
         call_with_io(self.run_git_prev)
         self.assertEqual(gitutils.git_commit_hash("HEAD"), "merge")
 
-        call_with_io(self.run_git_prev, input="2")
+        call_with_io(self.run_git_prev, input="2\n")
         self.assertEqual(gitutils.git_commit_hash("HEAD"), "child3b1")
 
         call_with_io(self.run_git_prev)
@@ -454,7 +479,7 @@ class TestGitPrevNext(TestGitCommand):
         call_with_io(self.run_git_next)
         self.assertEqual(gitutils.git_commit_hash("HEAD"), "child2")
 
-        call_with_io(self.run_git_next, input="2")
+        call_with_io(self.run_git_next, input="2\n")
         self.assertEqual(gitutils.git_commit_hash("HEAD"), "child3b")
 
         call_with_io(self.run_git_next)
@@ -463,7 +488,7 @@ class TestGitPrevNext(TestGitCommand):
         call_with_io(self.run_git_next)
         self.assertEqual(gitutils.git_commit_hash("HEAD"), "merge")
 
-        call_with_io(self.run_git_next, input="1")
+        call_with_io(self.run_git_next, input="1\n")
         self.assertEqual(gitutils.git_commit_hash("HEAD"), "child4")
 
         call_with_io(self.run_git_next)

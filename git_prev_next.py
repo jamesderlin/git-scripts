@@ -34,6 +34,8 @@ def prompt_for_hash(mode, commit_hashes):
         = gitutils.prompt_with_numbered_choices(commit_descriptions,
                                                 preamble=instructions,
                                                 prompt=prompt)
+    if selected_index is None:
+        raise gitutils.AbortError(cancelled=True)
     return commit_hashes[selected_index]
 
 

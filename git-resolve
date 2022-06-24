@@ -76,8 +76,7 @@ def handle_conflicts(file_path):
         print(f"Conflicts in: {file_path}")
         result = ConflictState.UNRESOLVED
 
-        response = gitutils.prompt_with_choices(choices, default="e",
-                                                prompt=prompt)
+        response = gitutils.prompt_with_choices(prompt, choices, default="e")
         if response is None or response == "q":
             raise gitutils.AbortError(cancelled=True)
 
