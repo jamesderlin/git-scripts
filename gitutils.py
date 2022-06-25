@@ -5,14 +5,13 @@ import functools
 import importlib
 import importlib.machinery
 import importlib.util
-import math
 import os
 import shlex
-import shutil
 import subprocess
 import sys
 
 import python_cli_utils.choices_prompt
+import python_cli_utils.tty_utils
 
 verbose = False
 
@@ -89,7 +88,11 @@ def debug_prompt():
 
 
 def entrypoint(caller_globals):
-    """Returns a decorator for top-level `main` (or equivalent) functions."""
+    """
+    Returns a decorator for top-level `main` (or equivalent) functions.
+
+    Used to reduce boilerplate.
+    """
     script_name = os.path.basename(caller_globals["__file__"])
 
     def decorator(f):
@@ -195,40 +198,6 @@ def run_editor(file_path, line_number=None):
               from e
 
 
-def terminal_size():
-    """
-    Returns the terminal size.
-
-    Returns `(math.inf, math.inf)` if stdout is not a TTY.
-    """
-    if not sys.stdout.isatty():
-        return os.terminal_size((math.inf, math.inf))
-    return shutil.get_terminal_size()
-
-
-def ellipsize(s, width):
-    """
-    Truncates a string to the specified maximum width (in code points).
-
-    The maximum width includes the added ellipsis if the string is truncated.
-
-    `width` must be a positive integer.
-
-    Unlike `textwrap.shorten`, leaves whitespace alone.
-    """
-    assert width > 0
-    if len(s) <= width:
-        return s
-
-    ellipsis = "..."
-    if width < len(ellipsis):
-        return s[:width]
-
-    s = s[:(width - len(ellipsis))] + ellipsis
-    assert len(s) == width
-    return s
-
-
 def remove_prefix(s, *, prefix, default=None):
     """
     Returns the string with the specified prefix removed.
@@ -249,10 +218,10 @@ def prompt_with_numbered_choices(choices,
                                  preamble="",
                                  prompt=None):
     """An wrapper around `python_cli_utils.numbered_choices_prompt."""
-    max_length = terminal_size().columns - 1
+    max_length = python_cli_utils.terminal_size().columns - 1
 
     def item_formatter(s):
-        return ellipsize(s, width=max_length)
+        return python_cli_utils.ellipsize(s, width=max_length)
 
     return python_cli_utils.numbered_choices_prompt(
         choices,

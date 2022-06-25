@@ -5,7 +5,6 @@
 import argparse
 from collections import namedtuple
 import io
-import math
 import os
 import re
 import shlex
@@ -150,24 +149,6 @@ def call_with_io(callee, mock_stdout=None, mock_stderr=None, mock_stdin=None,
 class TestUtils(unittest.TestCase):
     """Tests for miscellaneous `gitutils` functions."""
 
-    def setUp(self):
-        gitutils.terminal_size = lambda: os.terminal_size((math.inf, math.inf))
-
-    def test_ellipsize(self):
-        """Test `gitutils.ellipsize`."""
-        ellipsize = gitutils.ellipsize
-        self.assertRaises(AssertionError, ellipsize, "Lorem ipsum", -1)
-        self.assertRaises(AssertionError, ellipsize, "Lorem ipsum", 0)
-        self.assertEqual(ellipsize("Lorem ipsum", 1), "L")
-        self.assertEqual(ellipsize("Lorem ipsum", 2), "Lo")
-        self.assertEqual(ellipsize("Lorem ipsum", 3), "...")
-        self.assertEqual(ellipsize("Lorem ipsum", 4), "L...")
-        self.assertEqual(ellipsize("Lorem ipsum", 5), "Lo...")
-        self.assertEqual(ellipsize("Lorem ipsum", 10), "Lorem i...")
-        self.assertEqual(ellipsize("Lorem ipsum", 11), "Lorem ipsum")
-        self.assertEqual(ellipsize("Lorem ipsum", 12), "Lorem ipsum")
-        self.assertEqual(ellipsize("Lorem ipsum", 20), "Lorem ipsum")
-
     def test_remove_prefix(self):
         """Test `gitutils.remove_prefix`."""
         remove_prefix = gitutils.remove_prefix
@@ -180,6 +161,7 @@ class TestUtils(unittest.TestCase):
         self.assertIs(remove_prefix("foobar", prefix="foobarbaz"), None)
         self.assertIs(remove_prefix("foobar", prefix="bar", default="default"),
                       "default")
+
 
 class TestGitCommand(unittest.TestCase):
     """A base class for tests that use faked `git` commands."""
