@@ -13,7 +13,7 @@ import sys
 import gitutils
 
 
-@gitutils.entrypoint(globals())
+@gitutils.entrypoint
 def main(argv):
     ap = argparse.ArgumentParser(description=__doc__.strip(), add_help=False)
     ap.add_argument("-h", "--help", action="help",

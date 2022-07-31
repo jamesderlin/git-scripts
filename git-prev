@@ -12,7 +12,7 @@ import git_prev_next
 import gitutils
 
 
-@gitutils.entrypoint(globals())
+@gitutils.entrypoint
 def main(argv):
     return git_prev_next.main(git_prev_next.Mode.PREV, __doc__, argv)
 

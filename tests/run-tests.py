@@ -401,7 +401,7 @@ class TestGitPrevNext(TestGitCommand):
                          "git-next: Could not find a child commit for leaf3\n")
 
 
-@gitutils.entrypoint(globals())
+@gitutils.entrypoint
 def main(argv):
     ap = argparse.ArgumentParser(description=__doc__.strip(), add_help=False)
     ap.add_argument("-h", "--help", action="help",

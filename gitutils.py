@@ -99,37 +99,34 @@ def debug_prompt():
                              **previous_frame.f_locals))
 
 
-def entrypoint(caller_globals):
+def entrypoint(main):
     """
-    Returns a decorator for top-level `main` (or equivalent) functions.
+    Decorator for top-level `main` (or equivalent) functions.
 
     Used to reduce boilerplate.
     """
-    script_name = os.path.basename(caller_globals["__file__"])
+    @functools.wraps(main)
+    def wrapper(*args, **kwargs):
+        script_name = os.path.basename(sys.modules[main.__module__].__file__)
+        sys.modules[main.__module__].__name__ = script_name
 
-    def decorator(f):
-        @functools.wraps(f)
-        def wrapper(*args, **kwargs):
-            caller_globals["__name__"] = script_name
-            try:
-                return f(*args, **kwargs) or 0
-            except AbortError as e:
-                if not e.cancelled:
-                    print(f"{script_name}: {e}", file=sys.stderr)
-                return e.exit_code
-            except KeyboardInterrupt:
-                return 1
-            except BrokenPipeError:
-                # From <https://docs.python.org/3/library/signal.html#note-on-sigpipe>:
-                #
-                # Python flushes standard streams on exit; redirect remaining
-                # output to devnull to avoid another BrokenPipeError at
-                # shutdown.
-                devnull = os.open(os.devnull, os.O_WRONLY)
-                os.dup2(devnull, sys.stdout.fileno())
-                return 1  # Python exits with error code 1 on EPIPE.
-        return wrapper
-    return decorator
+        try:
+            return main(*args, **kwargs) or 0
+        except AbortError as e:
+            if not e.cancelled:
+                print(f"{script_name}: {e}", file=sys.stderr)
+            return e.exit_code
+        except KeyboardInterrupt:
+            return 1
+        except BrokenPipeError:
+            # From <https://docs.python.org/3/library/signal.html#note-on-sigpipe>:
+            #
+            # Python flushes standard streams on exit; redirect remaining
+            # output to devnull to avoid another BrokenPipeError at shutdown.
+            devnull = os.open(os.devnull, os.O_WRONLY)
+            os.dup2(devnull, sys.stdout.fileno())
+            return 1  # Python exits with error code 1 on EPIPE.
+    return wrapper
 
 
 def import_file(file_path, module_name=None):
