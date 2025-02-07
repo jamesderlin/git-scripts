@@ -21,6 +21,10 @@ Shows the diff for a single commit.
 
 Reports whether one Git commit is an ancestor of another.
 
+### `git-move-tag`
+
+Moves a lightweight Git tag to a different commit.
+
 ### `git-next`
 
 Navigates to a child commit.  Similar to `hg next`.  Interactively prompts if
@@ -66,4 +70,4 @@ Using symlinks allows easily enabling only specific commands.
 
 ---
 
-Copyright © 2015-2021 James D. Lin.
+Copyright © 2015-2025 James D. Lin.

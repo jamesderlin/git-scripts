@@ -5,7 +5,6 @@ Moves a lightweight tag to a different commit.
 """
 
 import argparse
-import functools
 import subprocess
 import sys
 
@@ -41,8 +40,15 @@ def main(argv):
                                   stdout=subprocess.DEVNULL)
     if result.returncode != 0:
         return result.returncode
+
     result = gitutils.run_command(("git", "tag", args.tag, dest_hash))
     if result.returncode != 0:
+        # Try to add the tag back to the original commit.
+        temp_result = gitutils.run_command(("git", "tag", args.tag, src_hash))
+        if temp_result.returncode != 0:
+            raise gitutils.AbortError(f"Failed to restore tag \"{args.tag}\" "
+                                      f"to commit {src_hash}",
+                                      exit_code=result.returncode)
         return result.returncode
 
     print(f"Moved tag \"{args.tag}\" from {src_hash} => {dest_hash}")
