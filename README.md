@@ -1,6 +1,7 @@
 # git-scripts
 
-A collection of various custom Git commands that I've written.
+A collection of various custom Git commands that I've written.  Requires
+Python 3.6 and Git 2.39 or later.
 
 ## Commands
 
@@ -34,6 +35,10 @@ there are multiple children.
 
 Navigates to a parent commit.  Similar to `hg prev`.  Interactively prompts if
 there are multiple parents.
+
+### `git-rebase-list`
+
+Rebases a list of branches onto a new parent.
 
 ### `git-reparent`
 

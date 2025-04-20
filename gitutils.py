@@ -31,6 +31,13 @@ class AbortError(Exception):
         self.exit_code = exit_code
 
 
+class CommitNotFoundError(AbortError):
+    """An exception class thrown by `git_commit_hash`."""
+    def __init__(self, commitish, *, exit_code=1):
+        super().__init__(f"No commit hash found for \"{commitish}\".")
+        self.exit_code = exit_code
+
+
 class PassThroughOption(argparse.Action):
     """
     Handles an option meant to be passed through to another command.  Appends
@@ -338,7 +345,7 @@ def git_commit_hash(commitish, short=False):
     Normalizes a commit-ish to an actual commit hash to handle things such as
     `:/COMMIT_MESSAGE`.
 
-    Raises an `AbortError` if no commit hash was found.
+    Raises an `CommitNotFoundError` if no commit hash was found.
     """
     assert commitish
 
@@ -353,8 +360,7 @@ def git_commit_hash(commitish, short=False):
                          stderr=subprocess.DEVNULL,
                          universal_newlines=True)
     if result.returncode != 0:
-        raise AbortError(f"No commit hash found for \"{commitish}\".",
-                         exit_code=result.returncode)
+        raise CommitNotFoundError(commitish, exit_code=result.returncode)
 
     return result.stdout.strip()
 
