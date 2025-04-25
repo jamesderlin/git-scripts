@@ -50,7 +50,7 @@ def main(argv):
             failed_branches.append(branch)
             continue
 
-        command = ("git", "rebase", "--update-refs", "--onto", dest, "--", branch)
+        command = ("git", "rebase", "--update-refs", "--", dest, branch)
         print(f"Rebasing {branch} onto {dest} ...")
         result = gitutils.run_command(command)
 
