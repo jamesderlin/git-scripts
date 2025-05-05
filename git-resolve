@@ -93,20 +93,20 @@ def handle_conflicts(file_path):
 class GitStatusParser:
     """Parser for tokens from `git status`."""
     def __init__(self, check_all_files):
-        self.git_root = gitutils.git_root()
-        self.check_all_files = check_all_files
         self.conflict_summary = ConflictState.NONE
+        self._git_root = gitutils.git_root()
+        self._check_all_files = check_all_files
 
     def parse(self, tokens):
         """Parses tokens from `git status`."""
         tokens_iter = iter(tokens)
         try:
             while True:
-                self.process_next_token(tokens_iter)
+                self._process_next_token(tokens_iter)
         except StopIteration:
             pass
 
-    def process_next_token(self, tokens_iter):
+    def _process_next_token(self, tokens_iter):
         """Processes the next token read from `git status`."""
         token = next(tokens_iter)
         if not token:
@@ -120,7 +120,7 @@ class GitStatusParser:
         # current git repository, not relative to the current working
         # directory.
         file_path = token[3:]
-        file_path = os.path.relpath(os.path.join(self.git_root, file_path))
+        file_path = os.path.relpath(os.path.join(self._git_root, file_path))
 
         if "R" in code:
             _original_file_path = next(tokens_iter)  # noqa: F841
@@ -131,34 +131,43 @@ class GitStatusParser:
             self.conflict_summary = ConflictState.UNRESOLVED
         elif code == "AU":
             print(f"Conflicts in: {file_path} (added by us)")
-            self.update_conflict_summary(ConflictState.UNRESOLVED)
+            self._update_conflict_summary(ConflictState.UNRESOLVED)
         elif code == "UA":
             print(f"Conflicts in: {file_path} (added by them)")
-            self.update_conflict_summary(ConflictState.UNRESOLVED)
+            self._update_conflict_summary(ConflictState.UNRESOLVED)
         elif code == "DD":
             print(f"Conflicts in: {file_path} (deleted by both)")
-            response = gitutils.prompt_with_choices("Delete (Y/n)? ",
-                                                    (("y", "yes"),
-                                                     ("n", "no")),
-                                                    default="y")
-            if response == "y":
-                gitutils.run_command(("git", "rm", "--quiet", "--", file_path),
-                                     stdout=subprocess.DEVNULL)
-                self.update_conflict_summary(ConflictState.RESOLVED)
-            else:
-                self.update_conflict_summary(ConflictState.UNRESOLVED)
+            self._resolve_delete(file_path)
         elif code == "DU":
             print(f"Conflicts in: {file_path} (deleted by us)")
-            self.update_conflict_summary(ConflictState.UNRESOLVED)
+            self._resolve_delete(file_path)
         elif code == "UD":
             print(f"Conflicts in: {file_path} (deleted by them)")
-            self.update_conflict_summary(ConflictState.UNRESOLVED)
+            self._resolve_delete(file_path)
         elif (code == "UU"
-              or (self.check_all_files and os.path.isfile(file_path))):
+              or (self._check_all_files and os.path.isfile(file_path))):
             file_state = handle_conflicts(file_path)
-            self.update_conflict_summary(file_state)
+            self._update_conflict_summary(file_state)
 
-    def update_conflict_summary(self, file_state):
+    def _resolve_delete(self, file_path):
+        """
+        Prompts to delete the conflicting file to resolve deletion conflicts.
+
+        Usually if the file was deleted, regardless of who deleted it, we'd
+        want it to stay deleted.
+        """
+        response = gitutils.prompt_with_choices(f"Delete `{file_path}`? (Y/n) ",
+                                                (("y", "yes"),
+                                                 ("n", "no")),
+                                                default="y")
+        if response == "y":
+            gitutils.run_command(("git", "rm", "--quiet", "--", file_path),
+                                 stdout=subprocess.DEVNULL)
+            self._update_conflict_summary(ConflictState.RESOLVED)
+        else:
+            self._update_conflict_summary(ConflictState.UNRESOLVED)
+
+    def _update_conflict_summary(self, file_state):
         """
         Updates the current `ConflictState` summary by combining it with the
         `ConflictState` from a single file.
