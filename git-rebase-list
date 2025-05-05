@@ -16,10 +16,11 @@ def main(argv):
                     help="Show this help message and exit.")
     ap.add_argument("--verbose", action="store_true",
                     help="Print verbose debugging messages.")
-    ap.add_argument("--dest", default="HEAD",
+    ap.add_argument("-i", "--interactive", action="store_true",
+                    help="See `git help rebase`.")
+    ap.add_argument("--dest", required=True,
                     help="The destination commit.  This will become the new "
-                         "parent commit of the rebased branches.  Defaults "
-                         "to `HEAD`.")
+                         "parent commit of the rebased branches.")
     ap.add_argument("branches", metavar="BRANCH", nargs="+",
                     help="A branch to rebase.  If `-`, branch names will "
                          "be read from stdin.")
@@ -41,6 +42,10 @@ def main(argv):
             for line in sys.stdin:
                 branches[line.strip()] = None
 
+    extra_rebase_args = []
+    if args.interactive:
+        extra_rebase_args.append("--interactive")
+
     failed_branches = []
     for branch in branches.keys():
         try:
@@ -50,7 +55,8 @@ def main(argv):
             failed_branches.append(branch)
             continue
 
-        command = ("git", "rebase", "--update-refs", "--", dest, branch)
+        command = ("git", "rebase", "--update-refs", *extra_rebase_args, "--",
+                   dest, branch)
         print(f"Rebasing {branch} onto {dest} ...")
         result = gitutils.run_command(command)
 
