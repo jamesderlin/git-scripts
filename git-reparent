@@ -47,6 +47,9 @@ def main(argv):
     ap.add_argument("-i", "--interactive", dest="rebase_options", nargs=0,
                     action=gitutils.PassThroughOption,
                     help=git_rebase_help)
+    ap.add_argument("--update-refs", "--no-update-refs", dest="rebase_options", nargs=0,
+                    action=gitutils.PassThroughOption,
+                    help=git_rebase_help)
     ap.add_argument("range", metavar="COMMIT::COMMIT",
                     help="The inclusive range of commits to reparent.  "
                          "All commits between and including the specified "
