@@ -2,7 +2,7 @@
 
 """Rebases a list of branches onto a new parent."""
 
-import argparse
+import optparse
 import subprocess
 import sys
 
@@ -11,39 +11,64 @@ import gitutils
 
 @gitutils.entrypoint
 def main(argv):
-    ap = argparse.ArgumentParser(description=__doc__.strip(), add_help=False)
-    ap.add_argument("-h", "--help", action="help",
-                    help="Show this help message and exit.")
-    ap.add_argument("--verbose", action="store_true",
-                    help="Print verbose debugging messages.")
-    ap.add_argument("-i", "--interactive", action="store_true",
-                    help="See `git help rebase`.")
-    ap.add_argument("--dest", required=True,
-                    help="The destination commit.  This will become the new "
-                         "parent commit of the rebased branches.")
-    ap.add_argument("branches", metavar="BRANCH", nargs="+",
-                    help="A branch to rebase.  If `-`, branch names will "
-                         "be read from stdin.")
+    parser = optparse.OptionParser(description=__doc__.strip(),
+                                   add_help_option=False)
+    parser.set_usage(f"{__name__} --dest=COMMIT [OPTIONS] [BRANCH...]")
+    parser.disable_interspersed_args()
 
-    args = ap.parse_args(argv[1:])
+    parser.add_option("-h", "--help", action="help",
+                      help="Show this help message and exit.")
+    parser.add_option("--verbose", action="store_true",
+                      help="Print verbose debugging messages.")
+    parser.add_option("-i", "--interactive", action="store_true",
+                      help="See `git help rebase`.")
+    parser.add_option("--dest", metavar="COMMIT",
+                      help="The destination commit-ish.  This will become the "
+                           "new parent commit of the rebased branches.  "
+                           "Required.")
+    parser.add_option("-f", "--from-file", metavar="FILE",
+                      help="A text file with a list of branches to rebase, "
+                           "one per line.  If `-`, branch names will be "
+                           "read from stdin.")
 
-    gitutils.verbose = args.verbose
+    (opts, args) = parser.parse_args(argv[1:])
 
-    dest = gitutils.git_commit_hash(args.dest)
+    gitutils.verbose = opts.verbose
+
+    if not opts.dest:
+        raise gitutils.AbortError("No destination commit-ish specified with "
+                                  "`--dest`.")
+
+    dest = gitutils.git_commit_hash(opts.dest)
 
     # Remove duplicate branch names while preserving order.  Python has no
     # ordered set type, so store them in a `dict`, which is guaranteed to
     # preserve order in Python 3.7 or later.
     branches = {}
-    for i in args.branches:
-        if i != "-":
-            branches[i] = None
+
+    def read_branches_from_file(f):
+        branches = {}
+        for line in f:
+            if line.startswith("#"):
+                continue
+
+            line = line.strip()
+            if line:
+                branches[line] = None
+        return branches
+
+    if opts.from_file:
+        if opts.from_file == "-":
+            branches = read_branches_from_file(sys.stdin)
         else:
-            for line in sys.stdin:
-                branches[line.strip()] = None
+            with open(opts.from_file) as f:
+                branches = read_branches_from_file(f)
+
+    for i in args:
+        branches[i] = None
 
     extra_rebase_args = []
-    if args.interactive:
+    if opts.interactive:
         extra_rebase_args.append("--interactive")
 
     failed_branches = []
@@ -59,7 +84,6 @@ def main(argv):
                    dest, branch)
         print(f"Rebasing {branch} onto {dest} ...")
         result = gitutils.run_command(command)
-
         if result.returncode != 0:
             failed_branches.append(branch)
             gitutils.run_command(("git", "rebase", "--abort"),
