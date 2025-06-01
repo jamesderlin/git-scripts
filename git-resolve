@@ -90,38 +90,19 @@ def handle_conflicts(file_path):
     return result
 
 
-class GitStatusParser:
-    """Parser for tokens from `git status`."""
+class ConflictChecker:
+    """Checks results from `git status` to find and to resolve conflicts."""
     def __init__(self, check_all_files):
         self.conflict_summary = ConflictState.NONE
-        self._git_root = gitutils.git_root()
         self._check_all_files = check_all_files
 
-    def parse(self, tokens):
-        """Parses tokens from `git status`."""
-        tokens_iter = iter(tokens)
-        try:
-            while True:
-                self._process_next_token(tokens_iter)
-        except StopIteration:
-            pass
+    def check(self, status_dict):
+        """Checks the entries from `git status`."""
+        for (file_path, code) in status_dict.items():
+            self._process_status_entry(file_path, code)
 
-    def _process_next_token(self, tokens_iter):
-        """Processes the next token read from `git status`."""
-        token = next(tokens_iter)
-        if not token:
-            return
-
-        if token[2] != " ":
-            raise gitutils.AbortError(f"Unexpected token: {token}")
-        code = token[0:2]
-
-        # `git status --porcelain` returns paths relative to the root of the
-        # current git repository, not relative to the current working
-        # directory.
-        file_path = token[3:]
-        file_path = os.path.relpath(os.path.join(self._git_root, file_path))
-
+    def _process_status_entry(self, file_path, code):
+        """Processes the next entry parsed from `git status`."""
         if "R" in code:
             _original_file_path = next(tokens_iter)  # noqa: F841
 
@@ -203,20 +184,14 @@ def main(argv):
     args = ap.parse_args(argv[1:])
 
     gitutils.verbose = args.verbose
-    result = gitutils.run_command(("git", "status", "--porcelain",
-                                   "--untracked-files=no", "-z"),
-                                  stdout=subprocess.PIPE,
-                                  universal_newlines=True,
-                                  check=True)
-    tokens = result.stdout.split("\0")
 
-    parser = GitStatusParser(args.all)
-    parser.parse(tokens)
-    if parser.conflict_summary == ConflictState.NONE:
+    checker = ConflictChecker(args.all)
+    checker.check(gitutils.git_status())
+    if checker.conflict_summary == ConflictState.NONE:
         print("No conflicts detected.")
         return 0
 
-    return 0 if parser.conflict_summary == ConflictState.RESOLVED else 1
+    return 0 if checker.conflict_summary == ConflictState.RESOLVED else 1
 
 
 if __name__ == "__main__":

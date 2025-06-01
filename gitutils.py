@@ -413,6 +413,44 @@ def is_git_ancestor(parent_commitish, child_commitish):
                      exit_code=result.returncode)
 
 
+def git_status(untracked_files="no", *paths):
+    """
+    Returns a dictionary mapping file paths to their `git status` codes.
+
+    The returned file paths will be relative to the current directory.
+
+    See the "Short Format" documentation from `git help status` for a guide to
+    possible codes.
+    """
+    root = git_root()
+
+    result = run_command(("git", "status", "-z",
+                          f"--untracked-files={untracked_files}",
+                          "--", *paths),
+                         stdout=subprocess.PIPE,
+                         encoding="utf-8",
+                         check=True)
+    tokens = result.stdout.split("\0")
+    if tokens and tokens[-1] == "":
+        tokens.pop()
+
+    d = {}
+    for token in tokens:
+        if len(token) <= 2 or token[2] != " ":
+            raise AbortError(f"Unexpected token: {token}")
+        code = token[0:2]
+
+        # `git status --porcelain` returns paths relative to the root of the
+        # current git repository, not relative to the current working
+        # directory.
+        file_path = token[3:]
+        file_path = os.path.relpath(os.path.join(root, file_path))
+
+        d[file_path] = code
+
+    return d
+
+
 def git_commit_graph():
     """
     Returns a dictionary mapping each Git commit hash to a list of commit
