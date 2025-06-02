@@ -3,6 +3,7 @@
 A collection of various custom Git commands that I've written.  Requires
 Python 3.6 and Git 2.39 or later.
 
+
 ## Commands
 
 ### `git-attach`
@@ -51,6 +52,12 @@ Interactively manages and resolves merge conflicts.  Unlike `git mergetool`,
 opens conflicting files in a text editor instead of in a graphical merge tool.
 Additionally will never automatically add files that still contain conflict
 markers.
+
+### `git-submit`
+
+A wrapper around `git commit` that prevents (perhaps accidentally) committing
+a mixture of staged and unstaged changes.
+
 
 ## Installation
 
