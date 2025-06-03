@@ -1,6 +1,5 @@
 """Common utility classes and functions shared among various Git scripts."""
 
-import argparse
 import functools
 import importlib
 import importlib.machinery
@@ -38,33 +37,57 @@ class CommitNotFoundError(AbortError):
         self.exit_code = exit_code
 
 
-class PassThroughOption(argparse.Action):
+def _passthrough_option(option, opt_str, value, parser):
     """
-    Handles an option meant to be passed through to another command.  Appends
-    the option and its arguments to a list specified by `dest`.
+    optparse callback for an option meant to be passed through to another
+    command.  Appends the option and its arguments to a list specified by
+    `option.dest`.
     """
-    def __call__(self, parser, namespace, values, option_string=None):
-        if not values:
-            new_value = option_string
-        else:
-            values_string = shlex.quote(" ".join((shlex.quote(token)
-                                                  for token in values)))
+    if value is None:
+        new_value = opt_str
+    else:
+        if isinstance(value, tuple):
+            value = quoted_join(value)
 
-            # If the option has an argument, always use the forms `-oARGUMENT`
-            # or `--option=ARGUMENT` instead of separating the argument with
-            # a space.   Some `git` commands (e.g. `git diff`) will treat
-            # option arguments separated by spaces as ambiguous.
-            new_value = (("{option_string}={values_string}"
-                          if option_string.startswith("--")
-                          else "{option_string}{values_string}")
-                         .format(option_string=option_string,
-                                 values_string=values_string))
+        # If the option has an argument, always use the forms `-oARGUMENT`
+        # or `--option=ARGUMENT` instead of separating the argument with
+        # a space.  Some `git` commands (e.g. `git diff`) will treat
+        # option arguments separated by spaces as ambiguous.
+        new_value = (f"{opt_str}={value}"
+                     if opt_str.startswith("--")
+                     else f"{opt_str}{value}")
 
-        # argparse initially adds `self.dest` to `namespace` with its default
-        # value, so we can't use `getattr`'s default argument.
-        old_values = getattr(namespace, self.dest) or []
-        old_values.append(new_value)
-        setattr(namespace, self.dest, old_values)
+    options = getattr(parser.values, option.dest) or []
+    options.append(new_value)
+    setattr(parser.values, option.dest, options)
+
+
+def add_passthrough_options(parser_or_group, options_dict, *, dest, help=None):
+    """
+    Given a dictionary of options meant to be passed through to another
+    command, adds those options to an optparse parser or option group.
+
+    The dictionary must map tuples of option names to option argument names
+    (metavars) or to `None` if the option takes no argument.
+    """
+    for (option_names, metavar) in options_dict.items():
+        assert isinstance(option_names, tuple)
+        parser_or_group.add_option(*option_names,
+                                   dest=dest,
+                                   metavar=metavar,
+                                   type=(None if metavar is None else str),
+                                   default=[],
+                                   action="callback",
+                                   callback=_passthrough_option,
+                                   help=help)
+
+
+def quoted_join(iterable):
+    """
+    Joins the specified iterable into a single string, shell-quoting each
+    element if necessary.
+    """
+    return " ".join((shlex.quote(i) for i in iterable))
 
 
 class GraphNode:
@@ -310,14 +333,14 @@ def get_git_config(section, variable_name, handler=None, default=None):
                      f"{result.returncode}")
 
 
-def get_option(args, variable_name, *, handler=None, default=None):
+def get_option(opts, variable_name, *, handler=None, default=None):
     """
     Retrieves a command-line option, falling back to a Git configuration option
     with the same name.
 
     Callers *must* set the default value for the command-line option to `None`.
     """
-    value = getattr(args, variable_name)
+    value = getattr(opts, variable_name)
     if value is not None:
         return value
 

@@ -4,8 +4,9 @@
 A friendlier wrapper for `git rebase`.
 """
 
-import argparse
 import functools
+import optparse
+import shlex
 import sys
 
 import gitutils
@@ -18,6 +19,14 @@ def memoized_current_branch():
 
 
 _epilog = """\
+
+Positional arguments:
+  COMMIT::COMMIT        The inclusive range of commits to reparent.  All
+                        commits between and including the specified commits
+                        will be reparented.  Endpoints may be specified in
+                        either order.  If either endpoint is unspecified, the
+                        current branch will be used.
+
 A note on syntax:
     The `COMMIT::COMMIT` syntax for specifying a commit range with inclusive
     endpoints is borrowed from Mercurial.  Although Mercurial also supports
@@ -30,41 +39,56 @@ A note on syntax:
 def main(argv):
     git_rebase_help = "See `git help rebase`."
 
-    ap = argparse.ArgumentParser(
+    parser = optparse.OptionParser(
         description=__doc__.strip(),
-        epilog=_epilog,
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        add_help=False,
+        usage="%prog [OPTIONS] [--] COMMIT::COMMIT",
+        add_help_option=False,
     )
-    ap.add_argument("-h", "--help", action="help",
-                    help="Show this help message and exit.")
-    ap.add_argument("--verbose", action="store_true",
-                    help="Print verbose debugging messages.")
-    ap.add_argument("--dest", default="HEAD",
-                    help="The destination commit.  This will become the "
-                         "new parent commit of the reparented range.  "
-                         "Defaults to `HEAD`.")
-    ap.add_argument("-i", "--interactive", dest="rebase_options", nargs=0,
-                    action=gitutils.PassThroughOption,
-                    help=git_rebase_help)
-    ap.add_argument("--update-refs", "--no-update-refs", dest="rebase_options", nargs=0,
-                    action=gitutils.PassThroughOption,
-                    help=git_rebase_help)
-    ap.add_argument("range", metavar="COMMIT::COMMIT",
-                    help="The inclusive range of commits to reparent.  "
-                         "All commits between and including the specified "
-                         "commits will be reparented.  Endpoints may be "
-                         "specified in either order.  If either endpoint "
-                         "is unspecified, the current branch will be used.")
+    parser.disable_interspersed_args()
 
-    args = ap.parse_args(argv[1:])
+    parser.add_option("-h", "--help", action="store_true",
+                      help="Show this help message and exit.")
+    parser.add_option("--verbose", action="store_true",
+                      help="Print verbose debugging messages.")
+    parser.add_option("--dest", default="HEAD",
+                      help="The destination commit.  This will become the "
+                           "new parent commit of the reparented range.  "
+                           "Defaults to `HEAD`.")
 
-    gitutils.verbose = args.verbose
-    rebase_range = (args.range.split("::")
-                    if "::" in args.range
-                    else args.range.split(".."))
+    passthrough_options = {
+        ("-i", "--interactive"): None,
+        ("--update-refs", "--no-update-refs"): None,
+    }
+
+    passthrough_group = optparse.OptionGroup(
+        parser,
+        "Options passed through to `git rebase`",
+        "(See `git help rebase` for details about these options.)",
+    )
+
+    gitutils.add_passthrough_options(passthrough_group, passthrough_options,
+                                     dest="rebase_options")
+    parser.add_option_group(passthrough_group)
+
+    (opts, args) = parser.parse_args(argv[1:])
+
+    if opts.help:
+        parser.print_help()
+        print(_epilog)
+        return 0
+
+    if not args:
+        parser.error("Insufficient arguments.")
+    rev_range = args.pop(0)
+    if args:
+        parser.error(f"Unrecognized arguments: {gitutils.quoted_join(args)}")
+
+    gitutils.verbose = opts.verbose
+    rebase_range = (rev_range.split("::")
+                    if "::" in rev_range
+                    else rev_range.split(".."))
     if len(rebase_range) != 2:
-        raise gitutils.AbortError(f"Invalid commit range: {args.range}")
+        raise gitutils.AbortError(f"Invalid commit range: {rev_range}")
 
     # Use `gitutils.git_commit_hash` judiciously since the commits might
     # specify branch names that we'll want to pass directly to `git rebase`.
@@ -78,7 +102,7 @@ def main(argv):
         if not gitutils.is_git_ancestor(rebase_range[0], rebase_range[1]):
             raise gitutils.AbortError(
                 "Commit range does not specify an ancestor and descendant: "
-                f"{args.range}")
+                f"{rev_range}")
 
     # `git rebase` uses an exclusive endpoint, so adjust by one commit.
     #
@@ -86,8 +110,8 @@ def main(argv):
     # the commit hash here is safe.
     rebase_range[0] = gitutils.git_commit_hash(rebase_range[0]) + "~"
 
-    rebase_options = args.rebase_options or ()
-    command = ("git", "rebase", *rebase_options, "--onto", args.dest, "--",
+    rebase_options = opts.rebase_options or ()
+    command = ("git", "rebase", *rebase_options, "--onto", opts.dest, "--",
                *rebase_range)
     return gitutils.run_command(command).returncode
 
