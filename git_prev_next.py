@@ -57,6 +57,9 @@ def main(mode, description, argv):
     gitutils.verbose = args.verbose
     attach = gitutils.get_option(args, "attach", handler=bool, default=False)
 
+    # Called for the side-effect of verifying that we're in a git repository.
+    gitutils.git_root()
+
     commit_graph = gitutils.git_commit_graph()
     head_hash = gitutils.git_commit_hash("HEAD")
     head_node = commit_graph.get(head_hash)
