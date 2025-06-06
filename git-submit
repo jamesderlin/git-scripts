@@ -77,8 +77,8 @@ def main(argv):
     # --------+----------+--------+
     #   all   | unstaged | staged | Desired behavior
     # --------+----------+--------+--------------------
-    #         |          |        | Do nothing
-    #    X    |          |        | Do nothing
+    #         |          |        | Submit nothing
+    #    X    |          |        | Submit nothing
     # --------+----------+--------+--------------------
     #         |    X     |        | Submit unstaged/all
     #    X    |    X     |        | Submit unstaged/all

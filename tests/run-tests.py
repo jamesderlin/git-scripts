@@ -23,11 +23,7 @@ git_have_commit = gitutils.import_file(os.path.join(script_dir,
                                                     "../git-have-commit"))
 git_prev = gitutils.import_file(os.path.join(script_dir, "../git-prev"))
 git_next = gitutils.import_file(os.path.join(script_dir, "../git-next"))
-
-
-def args_to_command_line(args):
-    """Converts a list of arguments to a single command-line string."""
-    return " ".join((shlex.quote(a) for a in args))
+git_submit = gitutils.import_file(os.path.join(script_dir, "../git-submit"))
 
 
 class FakeRunCommand:
@@ -42,7 +38,11 @@ class FakeRunCommand:
         the command.
 
         `action` specifies a callback to invoke when the faked command is
-        executed.
+        executed.  The callback must take three arguments: the command-line
+        (as a shell-quoted string), the regular expression `Match` object
+        (if the command-line was matched to a RE) or `None`, and the
+        `FakeRunResult` object that should be used as the result of the
+        faked command.
         """
         def __init__(self, return_code=0, stdout=None, stderr=None,
                      action=None):
@@ -53,7 +53,7 @@ class FakeRunCommand:
 
     def __init__(self):
         self.fake_results = {}
-        self.fake_results_re = []
+        self.fake_results_re = {}
 
     def set_fake_result(self, command_line, **kwargs):
         """
@@ -68,15 +68,15 @@ class FakeRunCommand:
         Like `set_fake_result`, but sets predetermined results for all
         command-lines that match the specified regular expression.
         """
-        self.fake_results_re.append((re.compile(command_pattern),
-                                     self.FakeRunResult(**kwargs)))
+        self.fake_results_re[command_pattern] = \
+            ((re.compile(command_pattern), self.FakeRunResult(**kwargs)))
 
     def __call__(self, *args, **kwargs):
-        command_line = args_to_command_line((*args[0],))
+        command_line = gitutils.quoted_join((*args[0],))
         result = self.fake_results.get(command_line)
         match = None
         if result is None:
-            for (regexp, r) in self.fake_results_re:
+            for (regexp, r) in self.fake_results_re.values():
                 match = regexp.match(command_line)
                 if match:
                     result = r
@@ -87,12 +87,28 @@ class FakeRunCommand:
                                       f"{command_line}")
 
         if result.action:
-            result.action(match, result)
+            result.action(command_line, match, result)
 
         return subprocess.CompletedProcess(args[0],
                                            result.return_code,
                                            stdout=result.stdout,
                                            stderr=result.stderr)
+
+
+@dataclasses.dataclass
+class CapturedCommand:
+    command_line: typing.Optional[str] = None
+
+
+def capture_command(captured_command):
+    """
+    Returns an action for a `FakeRunResult` that saves the executed
+    command-line.
+    """
+    def action(command_line, match, result):
+        assert command_line is not None
+        captured_command.command_line = command_line
+    return action
 
 
 def run_script(script, *args):
@@ -105,7 +121,7 @@ def run_script(script, *args):
         sys.argv = old_argv
 
 
-@dataclasses.dataclass
+@dataclasses.dataclass(kw_only=True)
 class IOResults:
     return_value: int
     exception: Exception
@@ -123,6 +139,8 @@ def call_with_io(callee, mock_stdout=None, mock_stderr=None, mock_stdin=None,
     """
     Invokes the callable specified by `callee`, capturing and returning stdout
     and stderr output.
+
+    `callee` must be a 0-argument closure.
 
     `input`, if specified, will be used as fake input to stdin.
 
@@ -170,7 +188,7 @@ class TestUtils(unittest.TestCase):
     def test_parse_known_options(self):
         """Tests `gitutils.parse_known_options`."""
 
-        @dataclasses.dataclass
+        @dataclasses.dataclass(kw_only=True, frozen=True)
         class ExpectedResults:
             verbose: typing.Optional[bool]
             flag: typing.Optional[bool]
@@ -179,7 +197,7 @@ class TestUtils(unittest.TestCase):
             extra_opts: typing.List[str]
             args: typing.List[str]
 
-        @dataclasses.dataclass
+        @dataclasses.dataclass(kw_only=False, frozen=True)
         class TestData:
             description: str
             args: typing.List[str]
@@ -385,10 +403,10 @@ class TestGitCommand(unittest.TestCase):
     def setUp(self):
         gitutils.run_command = self.fake_run_command
 
-        def fake_git_commit_hash_action(match, result):
+        def fake_git_commit_hash_action(command_line, match, result):
             result.stdout = match.group("commitish")
 
-        def fake_git_checkout_action(match, result):
+        def fake_git_checkout_action(command_line, match, result):
             commitish = match.group("commitish")
             self.set_fake_git_head(commitish)
             result.stdout = f"HEAD is now at {commitish}"
@@ -413,7 +431,7 @@ class TestGitHaveCommit(TestGitCommand):
 
     @staticmethod
     def run_have_commit(*args):
-        """Runs `git-have-commit`."""
+        """Returns a 0-argument closure that runs `git-have-commit`."""
         return lambda: run_script(git_have_commit, *args)
 
     def setUp(self):
@@ -491,7 +509,7 @@ class TestGitPrevNext(TestGitCommand):
             r"git config --type=bool (prev|next).attach",
             stdout="false")
 
-        def fake_summarize_git_commit_action(match, result):
+        def fake_summarize_git_commit_action(command_line, match, result):
             commitish = match.group("commitish")
             result.stdout = f"{commitish} description"
 
@@ -616,6 +634,94 @@ class TestGitPrevNext(TestGitCommand):
         self.assertTrue(not result.stdout)
         self.assertEqual(result.stderr,
                          "git-next: Could not find a child commit for leaf3\n")
+
+
+class TestGitSubmit(TestGitCommand):
+    """Tests for `git-submit`."""
+    def test(self):
+        """
+        Test that `git-submit` executes the expected `git commit` command.
+        """
+        self.fake_run_command.set_fake_result(
+            "git config --type=bool submit.all", return_code=1)
+
+        def make_fake_status(path, code):
+            def fake_git_status(*paths, untracked_files="no"):
+                return {path: {"code": code}} if path else {}
+            return fake_git_status
+
+        @dataclasses.dataclass(kw_only=True, frozen=True)
+        class TestEntry:
+            all: bool
+            path: str
+            code: str
+            expected: str
+
+        dummy_path = "foo"
+        test_entries = [
+            TestEntry(all=False, path="", code="  ", expected="git commit --"),
+            TestEntry(all=True,  path="", code="  ", expected="git commit --all --"),
+
+            TestEntry(all=False, path=dummy_path, code=" M", expected="git commit --all --"),
+            TestEntry(all=True,  path=dummy_path, code=" M", expected="git commit --all --"),
+
+            TestEntry(all=False, path=dummy_path, code="M ", expected="git commit --all --"),
+            TestEntry(all=True,  path=dummy_path, code="M ", expected="git commit --all --"),
+
+            TestEntry(all=False, path=dummy_path, code="MM", expected="git commit --"),
+        ]
+
+        for entry in test_entries:
+            with unittest.mock.patch("gitutils.git_status",
+                                     new=make_fake_status(entry.path, entry.code)):
+                captured_command = CapturedCommand()
+                self.fake_run_command.set_fake_result_re(
+                    r"git commit.*",
+                    action=capture_command(captured_command))
+
+                opts = ("--all",) if entry.all else ()
+                self.assertEqual(run_script(git_submit, *opts), 0,
+                                 f"{entry}")
+                self.assertEqual(captured_command.command_line, entry.expected,
+                                 f"{entry}")
+
+        @dataclasses.dataclass(kw_only=True, frozen=True)
+        class TestPromptEntry:
+            input: str
+            success: bool
+            command_line: typing.Optional[str]
+
+        test_prompt_entries = [
+            TestPromptEntry(input="staged", success=True, command_line="git commit --"),
+            TestPromptEntry(input="all", success=True, command_line="git commit --all --"),
+            TestPromptEntry(input="quit", success=False, command_line=None),
+        ]
+
+        for entry in test_prompt_entries:
+            with unittest.mock.patch("gitutils.git_status",
+                                     new=make_fake_status(dummy_path, "MM")):
+                captured_command = CapturedCommand()
+                self.fake_run_command.set_fake_result_re(
+                    r"git commit.*", action=capture_command(captured_command))
+
+                result = call_with_io(lambda: run_script(git_submit, "--all"),
+                                      input=f"{entry.input}\n")
+
+                self.assertIn("staged and unstaged changes detected", result.stdout)
+
+                if entry.success:
+                    self.assertEqual(result.return_value, 0, f"{entry}")
+                else:
+                    self.assertNotEqual(result.return_value, 0, f"{entry}")
+
+                if entry.command_line is None:
+                    self.assertIs(captured_command.command_line,
+                                  None,
+                                  f"{entry}")
+                else:
+                    self.assertEqual(captured_command.command_line,
+                                     entry.command_line,
+                                     f"{entry}")
 
 
 @gitutils.entrypoint
