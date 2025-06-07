@@ -2,8 +2,8 @@
 
 """Navigates to a parent or child commit."""
 
-import argparse
 import enum
+import optparse
 
 import gitutils
 
@@ -41,21 +41,29 @@ def prompt_for_hash(mode, commit_hashes):
 
 def main(mode, description, argv):
     command_name = gitutils.git_extension_command_name()
-    ap = argparse.ArgumentParser(description=description.strip(), add_help=False)
-    ap.add_argument("-h", "--help", action="help",
-                    help="Show this help message and exit.")
-    ap.add_argument("--verbose", action="store_true",
-                    help="Print verbose debugging messages.")
-    ap.add_argument("-a", "--attach", action="store_true", default=None,
-                    help=f"Automatically attach to a local branch if "
-                         f"possible.  This can be enabled by default by "
-                         f"setting the `{command_name}.attach` configuration "
-                         f"variable to `true`.")
 
-    args = ap.parse_args(argv[1:])
+    parser = optparse.OptionParser(
+        description=description.strip(),
+        usage="%prog [OPTIONS]",
+        add_help_option=False,
+    )
+    parser.disable_interspersed_args()
 
-    gitutils.verbose = args.verbose
-    attach = gitutils.get_option(args, "attach", handler=bool, default=False)
+    parser.add_option("-h", "--help", action="help",
+                      help="Show this help message and exit.")
+    parser.add_option("--verbose", action="store_true",
+                      help="Print verbose debugging messages.")
+    parser.add_option("-a", "--attach", action="store_true", default=None,
+                      help=f"Automatically attach to a local branch if "
+                           f"possible.  This can be enabled by default by "
+                           f"setting the `{command_name}.attach` "
+                           f"configuration variable to `true`.")
+
+    (opts, args) = parser.parse_args(argv[1:])
+    gitutils.expect_positional_args(parser, args, max=0)
+
+    gitutils.verbose = opts.verbose
+    attach = gitutils.get_option(opts, "attach", handler=bool, default=False)
 
     # Called for the side-effect of verifying that we're in a git repository.
     gitutils.git_root()

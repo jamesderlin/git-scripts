@@ -6,7 +6,6 @@ A friendlier wrapper for `git rebase`.
 
 import functools
 import optparse
-import shlex
 import sys
 
 import gitutils
@@ -21,24 +20,22 @@ def memoized_current_branch():
 _epilog = """\
 
 Positional arguments:
-  COMMIT::COMMIT        The inclusive range of commits to reparent.  All
-                        commits between and including the specified commits
-                        will be reparented.  Endpoints may be specified in
-                        either order.  If either endpoint is unspecified, the
-                        current branch will be used.
+  COMMIT::COMMIT  The inclusive range of commits to reparent.  All commits
+                  between and including the specified commits will be
+                  reparented.  Endpoints may be specified in either order.
+                  If either endpoint is unspecified, the current branch will
+                  be used.
 
 A note on syntax:
-    The `COMMIT::COMMIT` syntax for specifying a commit range with inclusive
-    endpoints is borrowed from Mercurial.  Although Mercurial also supports
-    using `COMMIT..COMMIT` to specify closed intervals, Git already uses that
-    syntax to specify half-open intervals.
+  The `COMMIT::COMMIT` syntax for specifying a commit range with inclusive
+  endpoints is borrowed from Mercurial.  Although Mercurial also supports
+  using `COMMIT..COMMIT` to specify closed intervals, Git already uses that
+  syntax to specify half-open intervals.
 """
 
 
 @gitutils.entrypoint
 def main(argv):
-    git_rebase_help = "See `git help rebase`."
-
     parser = optparse.OptionParser(
         description=__doc__.strip(),
         usage="%prog [OPTIONS] [--] COMMIT::COMMIT",
@@ -77,11 +74,8 @@ def main(argv):
         print(_epilog)
         return 0
 
-    if not args:
-        parser.error("Insufficient arguments.")
+    gitutils.expect_positional_args(parser, args, min=1, max=1)
     rev_range = args.pop(0)
-    if args:
-        parser.error(f"Unrecognized arguments: {gitutils.quoted_join(args)}")
 
     gitutils.verbose = opts.verbose
     rebase_range = (rev_range.split("::")

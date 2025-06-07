@@ -4,7 +4,7 @@
 Moves a lightweight tag to a different commit.
 """
 
-import argparse
+import optparse
 import subprocess
 import sys
 
@@ -13,45 +13,57 @@ import gitutils
 
 @gitutils.entrypoint
 def main(argv):
-    ap = argparse.ArgumentParser(description=__doc__.strip(), add_help=False)
-    ap.add_argument("-h", "--help", action="help",
-                    help="Show this help message and exit.")
-    ap.add_argument("--verbose", action="store_true",
-                    help="Print verbose debugging messages.")
-    ap.add_argument("tag", metavar="TAG",
-                    help="The name of the tag to move.")
-    ap.add_argument("dest", metavar="COMMIT", nargs="?", default="HEAD",
-                    help="The commit to move the tag to.  "
-                         "Defaults to `HEAD`.")
+    parser = optparse.OptionParser(
+        description=__doc__.strip(),
+        usage="%prog [OPTIONS] TAG [COMMIT]",
+        add_help_option=False,
+    )
+    parser.disable_interspersed_args()
 
-    args = ap.parse_args(argv[1:])
+    parser.add_option("-h", "--help", action="store_true",
+                      help="Show this help message and exit.")
+    parser.add_option("--verbose", action="store_true",
+                      help="Print verbose debugging messages.")
 
-    gitutils.verbose = args.verbose
+    (opts, args) = parser.parse_args(argv[1:])
+    if opts.help:
+        parser.print_help()
+        print("\n"
+              "Positional arguments:\n"
+              "  TAG     The name of the tag to move.\n"
+              "  COMMIT  The commit to move the tag to.  Defaults to `HEAD`.")
+        return 0
 
-    src_hash = gitutils.git_commit_hash(args.tag, short=True)
-    dest_hash = gitutils.git_commit_hash(args.dest, short=True)
+    gitutils.expect_positional_args(parser, args, min=1, max=2)
+    tag = args.pop(0)
+    dest = gitutils.try_pop(args, 0, default="HEAD")
+
+    gitutils.verbose = opts.verbose
+
+    src_hash = gitutils.git_commit_hash(tag, short=True)
+    dest_hash = gitutils.git_commit_hash(dest, short=True)
 
     if src_hash == dest_hash:
-        print(f"Tag \"{args.tag}\" is already at {dest_hash}",
+        print(f"Tag \"{tag}\" is already at {dest_hash}",
               file=sys.stderr)
         return 0
 
-    result = gitutils.run_command(("git", "tag", "-d", args.tag),
+    result = gitutils.run_command(("git", "tag", "-d", tag),
                                   stdout=subprocess.DEVNULL)
     if result.returncode != 0:
         return result.returncode
 
-    result = gitutils.run_command(("git", "tag", args.tag, dest_hash))
+    result = gitutils.run_command(("git", "tag", tag, dest_hash))
     if result.returncode != 0:
         # Try to add the tag back to the original commit.
-        temp_result = gitutils.run_command(("git", "tag", args.tag, src_hash))
+        temp_result = gitutils.run_command(("git", "tag", tag, src_hash))
         if temp_result.returncode != 0:
-            raise gitutils.AbortError(f"Failed to restore tag \"{args.tag}\" "
+            raise gitutils.AbortError(f"Failed to restore tag \"{tag}\" "
                                       f"to commit {src_hash}",
                                       exit_code=result.returncode)
         return result.returncode
 
-    print(f"Moved tag \"{args.tag}\" from {src_hash} => {dest_hash}")
+    print(f"Moved tag \"{tag}\" from {src_hash} => {dest_hash}")
     return 0
 
 

@@ -2,7 +2,7 @@
 
 """Attaches a detached Git head to a local branch."""
 
-import argparse
+import optparse
 import sys
 
 import gitutils
@@ -10,15 +10,22 @@ import gitutils
 
 @gitutils.entrypoint
 def main(argv):
-    ap = argparse.ArgumentParser(description=__doc__.strip(), add_help=False)
-    ap.add_argument("-h", "--help", action="help",
-                    help="Show this help message and exit.")
-    ap.add_argument("--verbose", action="store_true",
-                    help="Print verbose debugging messages.")
+    parser = optparse.OptionParser(
+        description=__doc__.strip(),
+        usage="%prog [OPTIONS]",
+        add_help_option=False,
+    )
+    parser.disable_interspersed_args()
 
-    args = ap.parse_args(argv[1:])
+    parser.add_option("-h", "--help", action="help",
+                      help="Show this help message and exit.")
+    parser.add_option("--verbose", action="store_true",
+                      help="Print verbose debugging messages.")
 
-    gitutils.verbose = args.verbose
+    (opts, args) = parser.parse_args(argv[1:])
+    gitutils.expect_positional_args(parser, args, max=0)
+
+    gitutils.verbose = opts.verbose
 
     current_branch = gitutils.current_git_branch()
     if current_branch != "HEAD":

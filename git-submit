@@ -6,7 +6,6 @@ a mixture of staged and unstaged changes.
 """
 
 import optparse
-import shlex
 import sys
 
 import gitutils

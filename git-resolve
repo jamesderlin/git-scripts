@@ -14,8 +14,8 @@ still contain conflict markers.
 # * Add option to re-resolve resolved conflicts.
 # * Add options to automatically resolve conflicts with ours or theirs.
 
-import argparse
 import enum
+import optparse
 import os
 import re
 import subprocess
@@ -136,10 +136,11 @@ class ConflictChecker:
         Usually if the file was deleted, regardless of who deleted it, we'd
         want it to stay deleted.
         """
-        response = gitutils.prompt_with_choices(f"Delete `{file_path}`? (Y/n) ",
-                                                (("y", "yes"),
-                                                 ("n", "no")),
-                                                default="y")
+        response = gitutils.prompt_with_choices(
+            f"Delete `{file_path}`? (Y/n) ",
+            (("y", "yes"),
+             ("n", "no")),
+            default="y")
         if response == "y":
             gitutils.run_command(("git", "rm", "--quiet", "--", file_path),
                                  stdout=subprocess.DEVNULL)
@@ -171,20 +172,27 @@ class ConflictChecker:
 
 @gitutils.entrypoint
 def main(argv):
-    ap = argparse.ArgumentParser(description=__doc__.strip(), add_help=False)
-    ap.add_argument("-h", "--help", action="help",
-                    help="Show this help message and exit.")
-    ap.add_argument("--verbose", action="store_true",
-                    help="Print verbose debugging messages.")
-    ap.add_argument("--all", action="store_true",
-                    help="Check for conflict markers in all files awaiting "
-                         "commit, not just unmerged files.")
+    parser = optparse.OptionParser(
+        description=__doc__.strip(),
+        usage="%prog [OPTIONS]",
+        add_help_option=False,
+    )
+    parser.disable_interspersed_args()
 
-    args = ap.parse_args(argv[1:])
+    parser.add_option("-h", "--help", action="help",
+                      help="Show this help message and exit.")
+    parser.add_option("--verbose", action="store_true",
+                      help="Print verbose debugging messages.")
+    parser.add_option("--all", action="store_true",
+                      help="Check for conflict markers in all files awaiting "
+                           "commit, not just unmerged files.")
 
-    gitutils.verbose = args.verbose
+    (opts, args) = parser.parse_args(argv[1:])
+    gitutils.expect_positional_args(parser, args, max=0)
 
-    checker = ConflictChecker(args.all)
+    gitutils.verbose = opts.verbose
+
+    checker = ConflictChecker(opts.all)
     checker.check(gitutils.git_status())
     if checker.conflict_summary == ConflictState.NONE:
         print("No conflicts detected.")

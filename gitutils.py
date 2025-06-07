@@ -82,6 +82,108 @@ def add_passthrough_options(parser_or_group, options_dict, *, dest, help=None):
                                    help=help)
 
 
+def expect_positional_args(parser, args, *, min=0, max=-1):
+    """
+    Validates that `min <= len(args) <= max`, printing an appropriate error
+    message.
+
+    `max` may be negative to allow an arbitrary number of arguments.
+    """
+    n = len(args)
+    if n < min:
+        parser.error("Insufficient arguments.")
+    if 0 <= max < n:
+        parser.error(f"Unrecognized arguments: {quoted_join(args[max:])}")
+
+
+def parse_known_options(parser, args):
+    """
+    Parses only options (and their arguments) known to `parser` from `args`.
+
+    Assumes that unrecognized options start with `-` or `--`, that
+    unrecognized options take at most one argument, and that arguments to
+    unrecognized options are passed as `-oARGUMENT` or as `--option=ARGUMENT`.
+
+    Returns a tuple `(options, unparsed_options, args)` where `options`
+    is `optparse.values` of the parsed options, `unparsed_options` is a list
+    of unrecognized option strings, and `args` is a list of the remaining
+    positional arguments.
+    """
+    assert not parser.allow_interspersed_args
+
+    i = 0
+    n = len(args)
+
+    known_options = []
+    unparsed_options = []
+    positional_args = []
+
+    while i < n:
+        if not args[i].startswith("-"):
+            positional_args = args[i:]
+            break
+
+        if args[i].startswith("--"):
+            if "=" in args[i]:
+                (opt_name, opt_arg) = args[i].split("=", 1)
+            else:
+                opt_name = args[i]
+                opt_arg = None
+
+            option = parser.get_option(opt_name)
+            if not option:
+                unparsed_options.append(args[i])
+                i += 1
+                continue
+
+            nargs = int(option.nargs or 0)
+
+            end = i + nargs + 1
+            if nargs > 0 and opt_arg is not None:
+                # One argument was already specified via `--option=arg`.
+                end -= 1
+            known_options += args[i:end]
+            assert i != end
+            i = end
+            continue
+
+        for j in range(1, len(args[i])):
+            short_option = f"-{args[i][j]}"
+            option = parser.get_option(short_option)
+            if not option:
+                # If we encounter an unrecognized short option, assume that
+                # rest of the token is its argument.  This is unfortunate
+                # since options that take arguments are much less common than
+                # options that don't, but the alternative is that it would be
+                # impossible to pass arguments to unrecognized short options.
+                unparsed_options.append(f"-{args[i][j:]}")
+                i += 1
+                break
+
+            nargs = int(option.nargs or 0)
+            end = i + nargs + 1
+            if nargs == 0:
+                known_options.append(short_option)
+                continue
+
+            known_options.append(f"-{args[i][j:]}")
+            if j + 1 != len(args[i]):
+                # One argument is already included in the current token.
+                end -= 1
+
+            known_options += args[(i + 1):end]
+            assert i != end
+            i = end
+            break
+        else:
+            i += 1
+
+    (opts, args) = parser.parse_args(known_options)
+    assert not args
+
+    return (opts, unparsed_options, positional_args)
+
+
 def quoted_join(iterable):
     """
     Joins the specified iterable into a single string, shell-quoting each
@@ -240,7 +342,9 @@ def run_editor(file_path, line_number=None):
         editor = get_git_config("core", "editor")
 
     try:
-        spawneditor.edit_file(file_path, line_number=line_number, editor=editor)
+        spawneditor.edit_file(file_path,
+                              line_number=line_number,
+                              editor=editor)
     except spawneditor.UnsupportedPlatformError as e:
         raise AbortError("Unable to determine what text editor to use.  "
                          "See the GIT_EDITOR section from `git help var`.") \
@@ -253,9 +357,20 @@ def remove_prefix(s, *, prefix, default=None):
 
     Returns `default` if the string does not start with the prefix.
     """
+    # Consider replacing with `str.removeprefix` in Python 3.9+.
     if s and s.startswith(prefix):
         return s[len(prefix):]
     return default
+
+
+def try_pop(lst, index=-1, *, default):
+    """
+    Pops the specified element from a list, returning `default` on failure.
+    """
+    try:
+        return lst.pop(index)
+    except IndexError:
+        return default
 
 
 prompt_with_choices = python_cli_utils.choices_prompt

@@ -72,6 +72,7 @@ def main(argv):
         extra_rebase_args.append("--interactive")
 
     failed_branches = []
+    # pylint: disable=consider-iterating-dictionary
     for branch in branches.keys():
         try:
             gitutils.git_commit_hash(branch)

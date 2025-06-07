@@ -2,7 +2,7 @@
 
 """Shows the diff for a single git commit."""
 
-import argparse
+import optparse
 import sys
 
 import gitutils
@@ -10,27 +10,44 @@ import gitutils
 
 @gitutils.entrypoint
 def main(argv):
-    ap = argparse.ArgumentParser(description=__doc__.strip(), add_help=False,
-                                 allow_abbrev=False)
-    ap.add_argument("-h", "--help", action="help",
-                    help="Show this help message and exit.")
-    ap.add_argument("--verbose", action="store_true",
-                    help="Print verbose debugging messages.")
-    ap.add_argument("commitish", metavar="COMMIT", nargs="?",
-                    default="HEAD",
-                    help="The commit-ish to show the diff of.  Defaults to "
-                         "`HEAD`.")
+    parser = optparse.OptionParser(
+        description=__doc__.strip(),
+        usage="%prog [OPTIONS] [COMMIT]",
+        add_help_option=False,
+    )
+    parser.disable_interspersed_args()
 
-    (args, extra_options) = ap.parse_known_args(argv[1:])
+    parser.add_option("-h", "--help", action="store_true",
+                      help="Show this help message and exit.")
+    parser.add_option("--verbose", action="store_true",
+                      help="Print verbose debugging messages.")
 
-    gitutils.verbose = args.verbose
-    commit = gitutils.git_commit_hash(args.commitish)
+    (opts, extra_opts, args) = gitutils.parse_known_options(parser, argv[1:])
+    if opts.help:
+        parser.print_help()
+        print("\n"
+              "  Unrecognized options will be passed through to `git diff`.  Unrecognized\n"
+              "  short options should be passed separately and should not be combined with\n"
+              "  recognized short options (i.e., use `-x -y -z`, not `-xyz`).  Unrecognized\n"
+              "  options that take arguments must be passed in the form of `-oARGUMENT` or\n"
+              "  `--option=ARGUMENT`.\n"
+              "\n"
+              "Positional arguments:\n"
+              "  COMMIT  The commit-ish to show the diff of.  Defaults to `HEAD`.")
+        return 0
+
+    gitutils.expect_positional_args(parser, args, min=0, max=1)
+    commitish = gitutils.try_pop(args, default="HEAD")
+
+    gitutils.verbose = opts.verbose
+
+    commit = gitutils.git_commit_hash(commitish)
 
     # We don't call `git diff` with `--` because `git diff` uses `--` to
     # separate commits from file paths, not options from positional
     # arguments.
     return gitutils.run_command(
-        ("git", "diff", *extra_options, commit + "~", commit),
+        ("git", "diff", *extra_opts, commit + "~", commit),
         bufsize=1).returncode
 
 

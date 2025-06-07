@@ -2,14 +2,15 @@
 
 """Unit tests for Git scripts."""
 
-import argparse
-from collections import namedtuple
+import dataclasses
 import io
+import optparse
 import os
 import re
 import shlex
 import subprocess
 import sys
+import typing
 import unittest
 import unittest.mock
 
@@ -104,8 +105,12 @@ def run_script(script, *args):
         sys.argv = old_argv
 
 
-IOResults = namedtuple("IOResults",
-                       ["return_value", "exception", "stdout", "stderr"])
+@dataclasses.dataclass
+class IOResults:
+    return_value: int
+    exception: Exception
+    stdout: str
+    stderr: str
 
 
 @unittest.mock.patch("sys.stdin", new_callable=io.StringIO)
@@ -161,6 +166,214 @@ class TestUtils(unittest.TestCase):
         self.assertIs(remove_prefix("foobar", prefix="foobarbaz"), None)
         self.assertIs(remove_prefix("foobar", prefix="bar", default="default"),
                       "default")
+
+    def test_parse_known_options(self):
+        """Tests `gitutils.parse_known_options`."""
+
+        @dataclasses.dataclass
+        class ExpectedResults:
+            verbose: typing.Optional[bool]
+            flag: typing.Optional[bool]
+            string: typing.Optional[str]
+            multi: typing.Optional[typing.Tuple[str, str]]
+            extra_opts: typing.List[str]
+            args: typing.List[str]
+
+        @dataclasses.dataclass
+        class TestData:
+            description: str
+            args: typing.List[str]
+            expected: ExpectedResults
+
+        test_data = [
+            TestData("No arguments",
+                     [],
+                     ExpectedResults(verbose=None,
+                                     flag=None,
+                                     string=None,
+                                     multi=None,
+                                     extra_opts=[],
+                                     args=[])),
+            TestData("Recognized long option",
+                     ["--verbose"],
+                     ExpectedResults(verbose=True,
+                                     flag=None,
+                                     string=None,
+                                     multi=None,
+                                     extra_opts=[],
+                                     args=[])),
+            TestData("Recognized long option with separate argument",
+                     ["--string", "value"],
+                     ExpectedResults(verbose=None,
+                                     flag=None,
+                                     string="value",
+                                     multi=None,
+                                     extra_opts=[],
+                                     args=[])),
+            TestData("Recognized long option with joined argument",
+                     ["--string=value"],
+                     ExpectedResults(verbose=None,
+                                     flag=None,
+                                     string="value",
+                                     multi=None,
+                                     extra_opts=[],
+                                     args=[])),
+            TestData("Recognized short option with separate argument",
+                     ["-s", "value"],
+                     ExpectedResults(verbose=None,
+                                     flag=None,
+                                     string="value",
+                                     multi=None,
+                                     extra_opts=[],
+                                     args=[])),
+            TestData("Recognized short option with separate argument",
+                     ["-svalue"],
+                     ExpectedResults(verbose=None,
+                                     flag=None,
+                                     string="value",
+                                     multi=None,
+                                     extra_opts=[],
+                                     args=[])),
+            TestData("Combined recognized short options",
+                     ["-vf"],
+                     ExpectedResults(verbose=True,
+                                     flag=True,
+                                     string=None,
+                                     multi=None,
+                                     extra_opts=[],
+                                     args=[])),
+            TestData("Combined recognized and unrecognized short option",
+                     ["-vfu"],
+                     ExpectedResults(verbose=True,
+                                     flag=True,
+                                     string=None,
+                                     multi=None,
+                                     extra_opts=["-u"],
+                                     args=[])),
+            TestData("Unrecognized short option with argument",
+                     ["-fuvx"],
+                     ExpectedResults(verbose=None,
+                                     flag=True,
+                                     string=None,
+                                     multi=None,
+                                     extra_opts=["-uvx"],
+                                     args=[])),
+            TestData("Combined recognized short options with separate argument",
+                     ["-vfs", "value"],
+                     ExpectedResults(verbose=True,
+                                     flag=True,
+                                     string="value",
+                                     multi=None,
+                                     extra_opts=[],
+                                     args=[])),
+            TestData("Combined recognized short options with joined argument",
+                     ["-vfsvalue"],
+                     ExpectedResults(verbose=True,
+                                     flag=True,
+                                     string="value",
+                                     multi=None,
+                                     extra_opts=[],
+                                     args=[])),
+            TestData("Combined recognized short options with multiple arguments, first joined",
+                     ["-vfmfoo", "bar", "baz", "-u"],
+                     ExpectedResults(verbose=True,
+                                     flag=True,
+                                     string=None,
+                                     multi=("foo", "bar", "baz"),
+                                     extra_opts=["-u"],
+                                     args=[])),
+            TestData("Combined recognized short options with multiple separate arguments",
+                     ["-vfm", "foo", "bar", "baz", "-u"],
+                     ExpectedResults(verbose=True,
+                                     flag=True,
+                                     string=None,
+                                     multi=("foo", "bar", "baz"),
+                                     extra_opts=["-u"],
+                                     args=[])),
+            TestData("Positional argument",
+                     ["--string", "value", "arg"],
+                     ExpectedResults(verbose=None,
+                                     flag=None,
+                                     string="value",
+                                     multi=None,
+                                     extra_opts=[],
+                                     args=["arg"])),
+            TestData("Unrecognized long and short options",
+                     ["--string", "--value", "--unknown", "-u"],
+                     ExpectedResults(verbose=None,
+                                     flag=None,
+                                     string="--value",
+                                     multi=None,
+                                     extra_opts=["--unknown", "-u"],
+                                     args=[])),
+            TestData("Unrecognized long option with positional argument",
+                     ["--string", "--value", "--unknown", "arg"],
+                     ExpectedResults(verbose=None,
+                                     flag=None,
+                                     string="--value",
+                                     multi=None,
+                                     extra_opts=["--unknown"],
+                                     args=["arg"])),
+            TestData("Recognized long options with multiple arguments, first joined",
+                     ["--multi=foo", "bar", "baz", "--unknown", "arg"],
+                     ExpectedResults(verbose=None,
+                                     flag=None,
+                                     string=None,
+                                     multi=("foo", "bar", "baz"),
+                                     extra_opts=["--unknown"],
+                                     args=["arg"])),
+            TestData("Recognized long options with multiple separate arguments",
+                     ["--multi", "foo", "bar", "baz", "--unknown", "arg"],
+                     ExpectedResults(verbose=None,
+                                     flag=None,
+                                     string=None,
+                                     multi=("foo", "bar", "baz"),
+                                     extra_opts=["--unknown"],
+                                     args=["arg"])),
+            TestData("Unrecognized long and short options",
+                     ["--unknown", "--string", "value", "-u", "-xyz", "arg"],
+                     ExpectedResults(verbose=None,
+                                     flag=None,
+                                     string="value",
+                                     multi=None,
+                                     extra_opts=["--unknown", "-u", "-xyz"],
+                                     args=["arg"])),
+            TestData("Positional argument stops parsing",
+                     ["--unknown1", "--string", "value", "arg", "--unknown2", "-u"],
+                     ExpectedResults(verbose=None,
+                                     flag=None,
+                                     string="value",
+                                     multi=None,
+                                     extra_opts=["--unknown1"],
+                                     args=["arg", "--unknown2", "-u"])),
+            TestData("Unrecognized options with arguments",
+                     ["--unknown1=arg", "-uarg2", "--string=value", "--unknown2", "arg"],
+                     ExpectedResults(verbose=None,
+                                     flag=None,
+                                     string="value",
+                                     multi=None,
+                                     extra_opts=["--unknown1=arg", "-uarg2", "--unknown2"],
+                                     args=["arg"])),
+        ]
+
+        for test in test_data:
+            parser = optparse.OptionParser(add_help_option=False)
+            parser.disable_interspersed_args()
+
+            parser.add_option("-v", "--verbose", action="store_true")
+            parser.add_option("-f", "--flag", action="store_true")
+            parser.add_option("-s", "--string")
+            parser.add_option("-m", "--multi", nargs=3)
+
+            (opts, extra_opts, args) = gitutils.parse_known_options(parser,
+                                                                    test.args)
+            msg = f"{test.description} ({test.args=})"
+            self.assertEqual(opts.verbose, test.expected.verbose, msg=msg)
+            self.assertEqual(opts.flag, test.expected.flag, msg=msg)
+            self.assertEqual(opts.string, test.expected.string, msg=msg)
+            self.assertEqual(opts.multi, test.expected.multi, msg=msg)
+            self.assertEqual(extra_opts, test.expected.extra_opts, msg=msg)
+            self.assertEqual(args, test.expected.args, msg=msg)
 
 
 class TestGitCommand(unittest.TestCase):
@@ -407,11 +620,17 @@ class TestGitPrevNext(TestGitCommand):
 
 @gitutils.entrypoint
 def main(argv):
-    ap = argparse.ArgumentParser(description=__doc__.strip(), add_help=False)
-    ap.add_argument("-h", "--help", action="help",
-                    help="Show this help message and exit.")
+    parser = optparse.OptionParser(
+        description=__doc__.strip(),
+        add_help_option=False,
+    )
+    parser.disable_interspersed_args()
 
-    ap.parse_args(argv[1:])
+    parser.add_option("-h", "--help", action="help",
+                      help="Show this help message and exit.")
+
+    (_opts, args) = parser.parse_args(argv[1:])
+    gitutils.expect_positional_args(parser, args, max=0)
 
     unittest.main()
 

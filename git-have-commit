@@ -7,7 +7,7 @@ If the specified commit is not an ancestor, nothing is printed, and the command
 exits with a status of 1.
 """
 
-import argparse
+import optparse
 import sys
 
 import gitutils
@@ -15,30 +15,46 @@ import gitutils
 
 @gitutils.entrypoint
 def main(argv):
-    ap = argparse.ArgumentParser(description=__doc__.strip(), add_help=False)
-    ap.add_argument("-h", "--help", action="help",
-                    help="Show this help message and exit.")
-    ap.add_argument("--verbose", action="store_true",
-                    help="Print verbose debugging messages.")
-    ap.add_argument("--leaf", default="HEAD",
-                    help="The descendant commit-ish.  Defaults to `HEAD`.")
-    ap.add_argument("commit", metavar="COMMIT",
-                    help="The ancestor commit-ish.")
+    parser = optparse.OptionParser(
+        description=__doc__.strip(),
+        usage="%prog [OPTIONS] [--leaf=COMMIT] COMMIT",
+        add_help_option=False,
+    )
+    parser.disable_interspersed_args()
 
-    args = ap.parse_args(argv[1:])
+    parser.add_option("-h", "--help", action="store_true",
+                      help="Show this help message and exit.")
+    parser.add_option("--verbose", action="store_true",
+                      help="Print verbose debugging messages.")
+    parser.add_option("--leaf", default="HEAD",
+                      help="The descendant commit-ish.  Defaults to `HEAD`.")
 
-    if not gitutils.is_git_ancestor(args.commit, args.leaf):
+    (opts, args) = parser.parse_args(argv[1:])
+
+    if opts.help:
+        parser.print_help()
+        print("\n"
+              "Positional arguments:\n"
+              "  COMMIT  The ancestor commit-ish.")
+        return 0
+
+    gitutils.expect_positional_args(parser, args, min=1, max=1)
+    commitish = args.pop(0)
+
+    gitutils.verbose = opts.verbose
+
+    if not gitutils.is_git_ancestor(commitish, opts.leaf):
         return 1
 
-    commit = gitutils.git_commit_hash(args.commit, short=True)
-    commit = (f"{args.commit} ({commit})"
-              if commit[0:4] != args.commit[0:4]
-              else args.commit)
+    commit = gitutils.git_commit_hash(commitish, short=True)
+    commit = (f"{commitish} ({commit})"
+              if commit != commitish
+              else commitish)
 
-    leaf = gitutils.git_commit_hash(args.leaf, short=True)
-    leaf = (f"{args.leaf} ({leaf})"
-            if leaf[0:4] != args.leaf[0:4]
-            else args.leaf)
+    leaf = gitutils.git_commit_hash(opts.leaf, short=True)
+    leaf = (f"{opts.leaf} ({leaf})"
+            if leaf != opts.leaf
+            else opts.leaf)
     print(f"{leaf} has commit {commit}.")
 
     return 0
