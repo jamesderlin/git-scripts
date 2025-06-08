@@ -267,6 +267,10 @@ class TestGitPrevNext(TestGitCommand):
                               "initial child1\n")
 
         self.fake_run_command.set_fake_result(
+            "git rev-parse --show-toplevel",
+            stdout="/dev/null")
+
+        self.fake_run_command.set_fake_result(
             "git rev-list --children --all",
             stdout=commit_tree_string)
 
