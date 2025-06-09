@@ -436,11 +436,16 @@ def is_git_ancestor(parent_commitish, child_commitish):
                      exit_code=result.returncode)
 
 
-def git_status(untracked_files="no", *paths):
+def git_status(*paths, untracked_files="no"):
     """
-    Returns a dictionary mapping file paths to their `git status` codes.
+    Returns a dictionary mapping (new) file paths to status results.
 
-    The returned file paths will be relative to the current directory.
+    Each status result will be another dictionary with keys:
+
+        "code": The two character status code.
+        "original_file_path": For renames or copies, the original file path.
+
+    All returned file paths will be relative to the current directory.
 
     See the "Short Format" documentation from `git help status` for a guide to
     possible codes.
@@ -457,21 +462,36 @@ def git_status(untracked_files="no", *paths):
     if tokens and tokens[-1] == "":
         tokens.pop()
 
-    d = {}
-    for token in tokens:
-        if len(token) <= 2 or token[2] != " ":
-            raise AbortError(f"Unexpected token: {token}")
-        code = token[0:2]
+    status_dict = {}
 
-        # `git status --porcelain` returns paths relative to the root of the
-        # current git repository, not relative to the current working
-        # directory.
-        file_path = token[3:]
-        file_path = os.path.relpath(os.path.join(root, file_path))
+    tokens_iter = iter(tokens)
+    try:
+        while True:
+            token = next(tokens_iter)
 
-        d[file_path] = code
+            if len(token) <= 2 or token[2] != " ":
+                raise AbortError(f"Unexpected token: {token}")
+            code = token[0:2]
 
-    return d
+            file_info = {"code": code}
+
+            # `git status --porcelain` returns paths relative to the root of
+            # the current git repository, not relative to the current working
+            # directory.
+            file_path = token[3:]
+            file_path = os.path.relpath(os.path.join(root, file_path))
+
+            if ("R" in code) or ("C" in code):
+                original_file_path = next(tokens_iter)
+                original_file_path = os.path.relpath(
+                    os.path.join(root, original_file_path))
+                file_info["original_file_path"] = original_file_path
+            status_dict[file_path] = file_info
+
+    except StopIteration:
+        pass
+
+    return status_dict
 
 
 def git_commit_graph():

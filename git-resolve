@@ -98,13 +98,12 @@ class ConflictChecker:
 
     def check(self, status_dict):
         """Checks the entries from `git status`."""
-        for (file_path, code) in status_dict.items():
-            self._process_status_entry(file_path, code)
+        for (file_path, file_info) in status_dict.items():
+            self._process_status_entry(file_path, file_info)
 
-    def _process_status_entry(self, file_path, code):
+    def _process_status_entry(self, file_path, file_info):
         """Processes the next entry parsed from `git status`."""
-        if "R" in code:
-            _original_file_path = next(tokens_iter)  # noqa: F841
+        code = file_info["code"]
 
         # TODO: Provide resolution options for the other conflict types.
         if code == "AA":
