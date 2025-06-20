@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 
 """
-A wrapper around `git commit` that prevents (perhaps accidentally) committing
-a mixture of staged and unstaged changes.
+A wrapper around `git commit` that prompts when (perhaps accidentally)
+attempting to commit a mixture of staged and unstaged changes.
 """
 
 import optparse
@@ -24,14 +24,13 @@ def main(argv):
                       help="Show this help message and exit.")
     parser.add_option("--verbose", action="store_true",
                       help="Print verbose debugging messages.")
+    parser.add_option("-a", "--all", action="store_true",
+                      help="Consider all (both staged and unstaged) "
+                           "changes.  This can be enabled by default by "
+                           "setting the `submit.all` configuration variable "
+                           "to `true`.")
     parser.add_option("--dry-run", action="store_true",
                       help=optparse.SUPPRESS_HELP)
-    parser.add_option("--auto", action="store_true",
-                      help="Automatically commit unstaged changes if no "
-                           "staged changes exist.  This can be enabled by "
-                           "default by setting the `submit.auto` "
-                           "configuration variable to `true`.  Ignored if "
-                           "`-a`/`--all` is supplied.")
 
     passthrough_options = {
         ("-p", "--patch"): None,
@@ -62,7 +61,6 @@ def main(argv):
         "(See `git help commit` for details about these options.)",
     )
 
-    passthrough_group.add_option("-a", "--all", action="store_true")
     gitutils.add_passthrough_options(passthrough_group, passthrough_options,
                                      dest="commit_options")
     parser.add_option_group(passthrough_group)
@@ -73,33 +71,58 @@ def main(argv):
     if opts.verbose:
         opts.commit_options.append("--verbose")
 
-    auto = gitutils.get_option(opts, "auto", handler=bool, default=False)
+    opts.all = gitutils.get_option(opts, "all", handler=bool, default=False)
 
-    if auto or opts.all:
-        status_dict = gitutils.git_status()
+    # Options | Types of changes  |
+    # --------+----------+--------+
+    #   all   | unstaged | staged | Desired behavior
+    # --------+----------+--------+--------------------
+    #         |          |        | Do nothing
+    #    X    |          |        | Do nothing
+    # --------+----------+--------+--------------------
+    #         |    X     |        | Submit unstaged/all
+    #    X    |    X     |        | Submit unstaged/all
+    # --------+----------+--------+--------------------
+    #         |          |   X    | Submit staged/all
+    #    X    |          |   X    | Submit staged/all
+    # --------+----------+--------+--------------------
+    #         |    X     |   X    | Submit staged
+    #    X    |    X     |   X    | Prompt
 
-        has_staged_files = False
-        has_unstaged_files = False
-        for (_file_path, file_info) in status_dict.items():
-            (staged_code, unstaged_code) = file_info["code"]
-            if staged_code != " ":
-                has_staged_files = True
-            if unstaged_code != " ":
-                has_unstaged_files = True
+    status_dict = gitutils.git_status()
 
-        if opts.all and has_staged_files and has_unstaged_files:
-            print(f"{__name__}: Aborting commit because staged and unstaged "
-                  f"changes were detected.",
-                  file=sys.stderr)
-            return 1
+    has_staged_changes = False
+    has_unstaged_changes = False
+    for (_file_path, file_info) in status_dict.items():
+        (staged_code, unstaged_code) = file_info["code"]
+        if staged_code != " ":
+            has_staged_changes = True
+        if unstaged_code != " ":
+            has_unstaged_changes = True
 
-        if auto:
-            opts.all = not has_staged_files
+    if has_staged_changes != has_unstaged_changes:
+        opts.all = True
+    elif has_staged_changes and has_unstaged_changes:
+        if opts.all:
+            print("Both staged and unstaged changes detected.")
+            response = gitutils.prompt_with_choices(
+                "Submit: (S)taged, (a)ll, (q)uit: ",
+                (("s", "staged"), ("a", "all"), ("q", "quit")),
+                default="s",
+            )
+            if response is None or response == "q":
+                return 1
+
+            opts.all = response == "a"
 
     if opts.all:
         opts.commit_options.append("--all")
 
     command = ("git", "commit", *opts.commit_options, "--", *args)
+    if opts.dry_run:
+        print(command)
+        return 0
+
     return gitutils.run_command(command).returncode
 
 

@@ -55,8 +55,8 @@ markers.
 
 ### `git-submit`
 
-A wrapper around `git commit` that prevents (perhaps accidentally) committing
-a mixture of staged and unstaged changes.
+A wrapper around `git commit` that prompts when (perhaps accidentally)
+attempting to commit a mixture of staged and unstaged changes.
 
 
 ## Installation
