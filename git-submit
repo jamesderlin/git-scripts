@@ -24,11 +24,12 @@ def main(argv):
                       help="Show this help message and exit.")
     parser.add_option("--verbose", action="store_true",
                       help="Print verbose debugging messages.")
+    parser.add_option("--dry-run", action="store_true",
+                      help=optparse.SUPPRESS_HELP)
     parser.add_option("--auto", action="store_true",
-                      help="Automatic mode.  If any staged changes exist, "
-                           "commits only the staged changes.  Otherwise "
-                           "commits all unstaged changes.  This can be "
-                           "enabled by default by setting the `submit.auto` "
+                      help="Automatically commit unstaged changes if no "
+                           "staged changes exist.  This can be enabled by "
+                           "default by setting the `submit.auto` "
                            "configuration variable to `true`.  Ignored if "
                            "`-a`/`--all` is supplied.")
 
