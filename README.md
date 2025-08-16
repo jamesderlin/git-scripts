@@ -37,10 +37,6 @@ there are multiple children.
 Navigates to a parent commit.  Similar to `hg prev`.  Interactively prompts if
 there are multiple parents.
 
-### `git-rebase-list`
-
-Rebases a list of branches onto a new parent.
-
 ### `git-reparent`
 
 A wrapper around `git rebase` that attempts to use a friendlier command-line
