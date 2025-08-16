@@ -493,7 +493,7 @@ def git_commit_hash(commitish, short=False):
     if not verbose:
         extra_options.append("--quiet")
     result = run_command(("git", "rev-parse", "--verify", *extra_options,
-                          commitish),
+                          "--end-of-options", commitish, "--"),
                          stdout=subprocess.PIPE,
                          stderr=subprocess.DEVNULL,
                          universal_newlines=True)

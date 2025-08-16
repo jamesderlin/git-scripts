@@ -412,7 +412,8 @@ class TestGitCommand(unittest.TestCase):
             result.stdout = f"HEAD is now at {commitish}"
 
         self.fake_run_command.set_fake_result_re(
-            r"git rev-parse --verify (--short )?(--quiet )?(?P<commitish>.+)",
+            r"git rev-parse --verify (--short )?(--quiet )?--end-of-options "
+            r"(?P<commitish>[^ ]+)",
             action=fake_git_commit_hash_action)
 
         self.fake_run_command.set_fake_result_re(
@@ -422,7 +423,7 @@ class TestGitCommand(unittest.TestCase):
     def set_fake_git_head(self, commitish):
         """Fakes the current Git HEAD commit."""
         self.fake_run_command.set_fake_result(
-            "git rev-parse --verify --quiet HEAD",
+            "git rev-parse --verify --quiet --end-of-options HEAD --",
             stdout=commitish)
 
 
