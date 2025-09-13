@@ -29,6 +29,8 @@ def main(argv):
                            "changes.  This can be enabled by default by "
                            "setting the `submit.all` configuration variable "
                            "to `true`.")
+    parser.add_option("--amend", action="store_true",
+                      help="Update (replace) the current commit.")
     parser.add_option("--dry-run", action="store_true",
                       help=optparse.SUPPRESS_HELP)
 
@@ -50,7 +52,6 @@ def main(argv):
         ("--cleanup",): "MODE",
         ("-e", "--edit"): None,
         ("--no-edit",): None,
-        ("--amend",): None,
         ("--pathspec-from-file",): "FILE",
         ("-q", "--quiet"): None,
     }
@@ -100,10 +101,21 @@ def main(argv):
         if unstaged_code != " ":
             has_unstaged_changes = True
 
-    if has_staged_changes != has_unstaged_changes:
-        opts.all = True
-    elif has_staged_changes and has_unstaged_changes:
-        if opts.all:
+    if opts.all:
+        # Avoid unintentionally adding unstaged changes if someone wants to
+        # just amend a commit message.
+        if opts.amend and has_unstaged_changes and not has_staged_changes:
+            print("Unstaged changes detected for amend.")
+            response = gitutils.prompt_with_choices(
+                "Submit unstaged changes? (y/N) ",
+                (("y", "yes"), ("n", "no"), ("q", "quit")),
+                default="n",
+            )
+            if response is None or response == "q":
+                return 1
+
+            opts.all = response == "y"
+        elif has_staged_changes and has_unstaged_changes:
             print("Both staged and unstaged changes detected.")
             response = gitutils.prompt_with_choices(
                 "Submit: (S)taged, (a)ll, (q)uit: ",
@@ -117,6 +129,8 @@ def main(argv):
 
     if opts.all:
         opts.commit_options.append("--all")
+    if opts.amend:
+        opts.commit_options.append("--amend")
 
     command = ("git", "commit", *opts.commit_options, "--", *args)
     if opts.dry_run:

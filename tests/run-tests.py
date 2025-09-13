@@ -654,8 +654,10 @@ class TestGitSubmit(TestGitCommand):
         @dataclasses.dataclass(kw_only=True, frozen=True)
         class TestEntry:
             all: bool
+            amend: bool = False
             path: str
             code: str
+            answer: str = ""
             expected: str
 
         dummy_path = "foo"
@@ -663,27 +665,53 @@ class TestGitSubmit(TestGitCommand):
             TestEntry(all=False, path="", code="  ", expected="git commit --"),
             TestEntry(all=True,  path="", code="  ", expected="git commit --all --"),
 
-            TestEntry(all=False, path=dummy_path, code=" M", expected="git commit --all --"),
+            TestEntry(all=False, path=dummy_path, code=" M", expected="git commit --"),
             TestEntry(all=True,  path=dummy_path, code=" M", expected="git commit --all --"),
 
-            TestEntry(all=False, path=dummy_path, code="M ", expected="git commit --all --"),
+            TestEntry(all=False, path=dummy_path, code="M ", expected="git commit --"),
             TestEntry(all=True,  path=dummy_path, code="M ", expected="git commit --all --"),
 
             TestEntry(all=False, path=dummy_path, code="MM", expected="git commit --"),
+            TestEntry(all=True,  path=dummy_path, code="MM", answer="staged", expected="git commit --"),
+            TestEntry(all=True,  path=dummy_path, code="MM", answer="all", expected="git commit --all --"),
+
+            TestEntry(all=False, amend=True, path=dummy_path, code=" M", expected="git commit --amend --"),
+            TestEntry(all=True,  amend=True, path=dummy_path, code=" M", answer="yes", expected="git commit --all --amend --"),
+            TestEntry(all=True,  amend=True, path=dummy_path, code=" M", answer="no", expected="git commit --amend --"),
+            TestEntry(all=False, amend=True, path=dummy_path, code="M ", expected="git commit --amend --"),
+            TestEntry(all=True,  amend=True, path=dummy_path, code="M ", expected="git commit --all --amend --"),
+
+            TestEntry(all=False, amend=True, path=dummy_path, code="MM", expected="git commit --amend --"),
+            TestEntry(all=True,  amend=True, path=dummy_path, code="MM", answer="staged", expected="git commit --amend --"),
+            TestEntry(all=True,  amend=True, path=dummy_path, code="MM", answer="all", expected="git commit --all --amend --"),
         ]
 
         for entry in test_entries:
+            def answer_once(answer):
+                yield answer
+                self.fail(f"Unrecognized answer: {answer}")
+
             with unittest.mock.patch("gitutils.git_status",
-                                     new=make_fake_status(entry.path, entry.code)):
+                                     new=make_fake_status(entry.path, entry.code)), \
+                 unittest.mock.patch("sys.stdout", new_callable=io.StringIO), \
+                 unittest.mock.patch("builtins.input",
+                                     side_effect=answer_once(entry.answer)) as mock_input:
+
                 captured_command = CapturedCommand()
                 self.fake_run_command.set_fake_result_re(
                     r"git commit.*",
                     action=capture_command(captured_command))
 
-                opts = ("--all",) if entry.all else ()
+                opts = []
+                if entry.all:
+                    opts.append("--all")
+                if entry.amend:
+                    opts.append("--amend")
                 self.assertEqual(run_script(git_submit, *opts), 0,
                                  f"{entry}")
                 self.assertEqual(captured_command.command_line, entry.expected,
+                                 f"{entry}")
+                self.assertEqual(mock_input.call_count, 1 if entry.answer else 0,
                                  f"{entry}")
 
         @dataclasses.dataclass(kw_only=True, frozen=True)
