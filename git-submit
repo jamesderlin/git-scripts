@@ -92,29 +92,41 @@ def main(argv):
 
     status_dict = gitutils.git_status()
 
-    has_staged_changes = False
-    has_unstaged_changes = False
+    staged_files = []
+    unstaged_files = []
     for (_file_path, file_info) in status_dict.items():
         if file_info.code_index != " ":
-            has_staged_changes = True
+            staged_files.append(file_info.file_path)
         if file_info.code_working_tree != " ":
-            has_unstaged_changes = True
+            unstaged_files.append(file_info.file_path)
 
     if opts.all:
         # Avoid unintentionally adding unstaged changes if someone wants to
         # just amend a commit message.
-        if opts.amend and has_unstaged_changes and not has_staged_changes:
-            print("Unstaged changes detected for amend.")
+        if opts.amend and unstaged_files and not staged_files:
+            summary = gitutils.summarize_git_commit("HEAD")
+            print(f"Amending:\n"
+                  f"  {summary}\n"
+                  f"\n"
+                  f"Unstaged files detected:")
+            for path in unstaged_files:
+                print(f"  {path}")
+            print()
+
             response = gitutils.prompt_with_choices(
-                "Submit unstaged changes? (y/N) ",
-                (("y", "yes"), ("n", "no"), ("q", "quit")),
-                default="n",
+                "M: Edit commit message only (default)\n"
+                "U: Amend with all unstaged changes\n"
+                "Q: Quit\n"
+                "\n"
+                "How do you want to amend? (M/u/q) ",
+                (("m", "message"), ("u", "unstaged"), ("q", "quit")),
+                default="m",
             )
             if response is None or response == "q":
                 return 1
 
-            opts.all = response == "y"
-        elif has_staged_changes and has_unstaged_changes:
+            opts.all = response == "u"
+        elif staged_files and unstaged_files:
             print("Both staged and unstaged changes detected.")
             response = gitutils.prompt_with_choices(
                 "Submit: (S)taged, (a)ll, (q)uit: ",

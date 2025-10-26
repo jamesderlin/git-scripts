@@ -686,8 +686,8 @@ class TestGitSubmit(TestGitCommand):
             TestEntry(all=True,  path=dummy_path, code="MM", answer="all", expected="git commit --all --"),
 
             TestEntry(all=False, amend=True, path=dummy_path, code=" M", expected="git commit --amend --"),
-            TestEntry(all=True,  amend=True, path=dummy_path, code=" M", answer="yes", expected="git commit --all --amend --"),
-            TestEntry(all=True,  amend=True, path=dummy_path, code=" M", answer="no", expected="git commit --amend --"),
+            TestEntry(all=True,  amend=True, path=dummy_path, code=" M", answer="unstaged", expected="git commit --all --amend --"),
+            TestEntry(all=True,  amend=True, path=dummy_path, code=" M", answer="message", expected="git commit --amend --"),
             TestEntry(all=False, amend=True, path=dummy_path, code="M ", expected="git commit --amend --"),
             TestEntry(all=True,  amend=True, path=dummy_path, code="M ", expected="git commit --all --amend --"),
 
@@ -696,16 +696,21 @@ class TestGitSubmit(TestGitCommand):
             TestEntry(all=True,  amend=True, path=dummy_path, code="MM", answer="all", expected="git commit --all --amend --"),
         ]
 
+        def fake_git_summarize(*args, **kwargs):
+            return "abcdef012 Fake change summary"
+
         for entry in test_entries:
             def answer_once(answer):
                 yield answer
                 self.fail(f"Unrecognized answer: {answer}")
 
-            with unittest.mock.patch("gitutils.git_status",
-                                     new=make_fake_status(entry.path, entry.code)), \
-                 unittest.mock.patch("sys.stdout", new_callable=io.StringIO), \
-                 unittest.mock.patch("builtins.input",
-                                     side_effect=answer_once(entry.answer)) as mock_input:
+            with (unittest.mock.patch("gitutils.git_status",
+                                      new=make_fake_status(entry.path, entry.code)),
+                  unittest.mock.patch("gitutils.summarize_git_commit",
+                                      new=fake_git_summarize),
+                  unittest.mock.patch("sys.stdout", new_callable=io.StringIO),
+                  unittest.mock.patch("builtins.input",
+                                      side_effect=answer_once(entry.answer)) as mock_input):
 
                 captured_command = CapturedCommand()
                 self.fake_run_command.set_fake_result_re(
