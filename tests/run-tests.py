@@ -648,7 +648,17 @@ class TestGitSubmit(TestGitCommand):
 
         def make_fake_status(path, code):
             def fake_git_status(*paths, untracked_files="no"):
-                return {path: {"code": code}} if path else {}
+                if not path:
+                    return {}
+
+                (code_index, code_working_tree) = code
+                info = gitutils.GitStatusFileInfo(
+                    code_index=code_index,
+                    code_working_tree=code_working_tree,
+                    file_path=path,
+                    original_file_path=path,
+                )
+                return {path: info}
             return fake_git_status
 
         @dataclasses.dataclass(kw_only=True, frozen=True)

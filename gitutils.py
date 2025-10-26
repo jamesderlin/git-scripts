@@ -1,5 +1,6 @@
 """Common utility classes and functions shared among various Git scripts."""
 
+import dataclasses
 import functools
 import importlib
 import importlib.machinery
@@ -8,6 +9,7 @@ import os
 import shlex
 import subprocess
 import sys
+import typing
 
 import python_cli_utils.choices_prompt
 import python_cli_utils.tty_utils
@@ -35,6 +37,28 @@ class CommitNotFoundError(AbortError):
     def __init__(self, commitish, *, exit_code=1):
         super().__init__(f"No commit hash found for \"{commitish}\".")
         self.exit_code = exit_code
+
+
+@dataclasses.dataclass(kw_only=True)
+class GitStatusFileInfo:
+    """
+    Dataclass returned by `git_status`.
+
+    Attributes:
+        code_index: A single character status code for the index.
+
+        code_working_tree: A single character status code for working tree
+        status.
+
+        file_path: The current file path.
+
+        original_file_path: For renames or copies, the original file path.
+        Otherwise the same as `file_path`.
+    """
+    code_index: str
+    code_working_tree: str
+    file_path: str
+    original_file_path: str
 
 
 def _passthrough_option(option, opt_str, value, parser):
@@ -553,12 +577,8 @@ def is_git_ancestor(parent_commitish, child_commitish):
 
 def git_status(*paths, untracked_files="no"):
     """
-    Returns a dictionary mapping (new) file paths to status results.
-
-    Each status result will be another dictionary with keys:
-
-        "code": The two character status code.
-        "original_file_path": For renames or copies, the original file path.
+    Returns a dictionary mapping (new) file paths to status results stored in
+    `GitStatusFileInfo` objects.
 
     All returned file paths will be relative to the current directory.
 
@@ -588,7 +608,7 @@ def git_status(*paths, untracked_files="no"):
                 raise AbortError(f"Unexpected token: {token}")
             code = token[0:2]
 
-            file_info = {"code": code}
+            (code_index, code_working_tree) = code
 
             # `git status --porcelain` returns paths relative to the root of
             # the current git repository, not relative to the current working
@@ -596,12 +616,18 @@ def git_status(*paths, untracked_files="no"):
             file_path = token[3:]
             file_path = os.path.relpath(os.path.join(root, file_path))
 
+            original_file_path = file_path
+
             if ("R" in code) or ("C" in code):
                 original_file_path = next(tokens_iter)
                 original_file_path = os.path.relpath(
                     os.path.join(root, original_file_path))
-                file_info["original_file_path"] = original_file_path
-            status_dict[file_path] = file_info
+            status_dict[file_path] = GitStatusFileInfo(
+                code_index=code_index,
+                code_working_tree=code_working_tree,
+                file_path=file_path,
+                original_file_path=original_file_path,
+            )
 
     except StopIteration:
         pass

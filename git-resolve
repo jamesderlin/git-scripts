@@ -103,7 +103,7 @@ class ConflictChecker:
 
     def _process_status_entry(self, file_path, file_info):
         """Processes the next entry parsed from `git status`."""
-        code = file_info["code"]
+        code = file_info.code_index + file_info.code_working_tree
 
         # TODO: Provide resolution options for the other conflict types.
         if code == "AA":

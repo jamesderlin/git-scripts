@@ -95,10 +95,9 @@ def main(argv):
     has_staged_changes = False
     has_unstaged_changes = False
     for (_file_path, file_info) in status_dict.items():
-        (staged_code, unstaged_code) = file_info["code"]
-        if staged_code != " ":
+        if file_info.code_index != " ":
             has_staged_changes = True
-        if unstaged_code != " ":
+        if file_info.code_working_tree != " ":
             has_unstaged_changes = True
 
     if opts.all:
