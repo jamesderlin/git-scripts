@@ -39,7 +39,7 @@ class CommitNotFoundError(AbortError):
         self.exit_code = exit_code
 
 
-@dataclasses.dataclass(kw_only=True)
+@dataclasses.dataclass
 class GitStatusFileInfo:
     """
     Dataclass returned by `git_status`.
