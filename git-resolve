@@ -36,6 +36,8 @@ def find_conflict_marker(file_path):
     marker the specified file.
 
     Lines are numbered starting from 1.
+
+    Might raise a `UnicodeDecodeError` if the specified file is not UTF-8.
     """
     with open(file_path) as f:
         for (line_number, line) in enumerate(f, 1):
@@ -60,6 +62,8 @@ def handle_conflicts(file_path):
     `ConflictState.unresolved` if conflicts remain unresolved.
 
     Might raise `AbortError` to cancel resolving all remaining conflicts.
+
+    Might raise a `UnicodeDecodeError` if the specified file is not UTF-8.
     """
     result = ConflictState.NONE
     choices = (("e", "edit"), ("s", "skip"), ("q", "quit"))
@@ -126,8 +130,12 @@ class ConflictChecker:
             self._resolve_delete(file_path)
         elif (code == "UU"
               or (self._check_all_files and os.path.isfile(file_path))):
-            file_state = handle_conflicts(file_path)
-            self._update_conflict_summary(file_state)
+            try:
+                file_state = handle_conflicts(file_path)
+            except UnicodeDecodeError as e:
+                print(f"SKIPPING: {file_path} (not UTF-8)")
+            else:
+                self._update_conflict_summary(file_state)
 
     def _resolve_delete(self, file_path):
         """
